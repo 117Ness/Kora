@@ -14,6 +14,10 @@ import type {
   Recipe,
   RecipeWithIngredients,
 } from '@/types/kora';
+import {
+  computeInsightsAnalytics,
+  type InsightsAnalytics,
+} from '@/lib/analytics';
 
 // =============================================================
 // Generic response envelope
@@ -688,5 +692,47 @@ export async function createIngredient(
     return ok(created as Ingredient);
   } catch (e) {
     return err(e instanceof Error ? e.message : 'Failed to create ingredient');
+  }
+}
+
+// =============================================================
+// 12. getInsightsData
+// =============================================================
+
+export type InsightsData = InsightsAnalytics;
+
+export async function getInsightsData(): Promise<ActionResult<InsightsAnalytics>> {
+  try {
+    const supabase = await createClient();
+
+    const [logsRes, ingredientsRes, dayPlansRes] = await Promise.all([
+      supabase
+        .from('consumption_logs')
+        .select('*')
+        .order('log_date', { ascending: true }),
+      supabase
+        .from('ingredients')
+        .select('*')
+        .order('name', { ascending: true }),
+      supabase
+        .from('day_plans')
+        .select(DAY_PLAN_SELECT)
+        .order('day_of_week', { ascending: true })
+        .order('sort_order', { ascending: true }),
+    ]);
+
+    if (logsRes.error) return err(logsRes.error.message);
+    if (ingredientsRes.error) return err(ingredientsRes.error.message);
+    if (dayPlansRes.error) return err(dayPlansRes.error.message);
+
+    const analytics = computeInsightsAnalytics(
+      (logsRes.data ?? []) as ConsumptionLog[],
+      (ingredientsRes.data ?? []) as Ingredient[],
+      (dayPlansRes.data ?? []) as unknown as DayPlanWithRecipe[],
+    );
+
+    return ok(analytics);
+  } catch (e) {
+    return err(e instanceof Error ? e.message : 'Failed to load insights data');
   }
 }
