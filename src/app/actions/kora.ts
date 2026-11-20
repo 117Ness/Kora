@@ -464,3 +464,229 @@ export async function logDayConsumption(
     return err(e instanceof Error ? e.message : 'Failed to log consumption');
   }
 }
+
+// =============================================================
+// 6. getLibraryData
+// =============================================================
+
+export type LibraryData = {
+  recipes: RecipeWithIngredients[];
+  ingredients: Ingredient[];
+};
+
+export async function getLibraryData(): Promise<ActionResult<LibraryData>> {
+  try {
+    const supabase = await createClient();
+
+    const [recipesRes, ingredientsRes] = await Promise.all([
+      supabase
+        .from('recipes')
+        .select(RECIPE_SELECT)
+        .order('name', { ascending: true }),
+      supabase
+        .from('ingredients')
+        .select('*')
+        .order('name', { ascending: true }),
+    ]);
+
+    if (recipesRes.error) return err(recipesRes.error.message);
+    if (ingredientsRes.error) return err(ingredientsRes.error.message);
+
+    return ok({
+      recipes: (recipesRes.data ?? []) as unknown as RecipeWithIngredients[],
+      ingredients: (ingredientsRes.data ?? []) as unknown as Ingredient[],
+    });
+  } catch (e) {
+    return err(e instanceof Error ? e.message : 'Failed to load library data');
+  }
+}
+
+// =============================================================
+// 7. updateRecipe
+// =============================================================
+
+const updateRecipeDetailsSchema = z.object({
+  id: z.string().uuid('Invalid recipe UUID'),
+  name: z.string().trim().min(1, 'Recipe name is required'),
+  notes: z.string().trim().nullish(),
+});
+
+export async function updateRecipe(
+  id: string,
+  data: { name: string; notes?: string | null },
+): Promise<ActionResult<Recipe>> {
+  const parsed = updateRecipeDetailsSchema.safeParse({ id, ...data });
+  if (!parsed.success) return zodErr(parsed.error);
+
+  try {
+    const supabase = await createClient();
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('recipes')
+      .update({
+        name: parsed.data.name,
+        notes: parsed.data.notes ?? null,
+      })
+      .eq('id', parsed.data.id)
+      .select()
+      .single();
+
+    if (updateErr) return err(updateErr.message);
+
+    revalidatePath('/library');
+    revalidatePath('/');
+    revalidatePath('/insights');
+    return ok(updated as Recipe);
+  } catch (e) {
+    return err(e instanceof Error ? e.message : 'Failed to update recipe');
+  }
+}
+
+// =============================================================
+// 8. deleteRecipe
+// =============================================================
+
+export async function deleteRecipe(
+  recipeId: string,
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = z.string().uuid('Invalid recipe UUID').safeParse(recipeId);
+  if (!parsed.success) return zodErr(parsed.error);
+
+  try {
+    const supabase = await createClient();
+
+    const { error: delErr } = await supabase
+      .from('recipes')
+      .delete()
+      .eq('id', parsed.data);
+
+    if (delErr) return err(delErr.message);
+
+    revalidatePath('/library');
+    revalidatePath('/');
+    revalidatePath('/insights');
+    return ok({ id: parsed.data });
+  } catch (e) {
+    return err(e instanceof Error ? e.message : 'Failed to delete recipe');
+  }
+}
+
+// =============================================================
+// 9. updateIngredient
+// =============================================================
+
+const updateIngredientActionSchema = z.object({
+  id: z.string().uuid('Invalid ingredient UUID'),
+  name: z.string().trim().min(1, 'Ingredient name is required').optional(),
+  unit: z.string().trim().min(1, 'Unit is required').optional(),
+  pack_size: z.coerce.number().positive('Pack size must be greater than 0').optional(),
+  pack_cost: z.coerce.number().min(0, 'Pack cost must be >= 0').optional(),
+  calories_per_unit: z.coerce.number().min(0, 'Calories must be >= 0').optional(),
+});
+
+export async function updateIngredient(
+  id: string,
+  data: {
+    name?: string;
+    unit?: string;
+    pack_size?: number;
+    pack_cost?: number;
+    calories_per_unit?: number;
+  },
+): Promise<ActionResult<Ingredient>> {
+  const parsed = updateIngredientActionSchema.safeParse({ id, ...data });
+  if (!parsed.success) return zodErr(parsed.error);
+
+  const { id: ingId, ...updateFields } = parsed.data;
+
+  try {
+    const supabase = await createClient();
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('ingredients')
+      .update(updateFields)
+      .eq('id', ingId)
+      .select()
+      .single();
+
+    if (updateErr) return err(updateErr.message);
+
+    revalidatePath('/library');
+    revalidatePath('/');
+    revalidatePath('/insights');
+    return ok(updated as Ingredient);
+  } catch (e) {
+    return err(e instanceof Error ? e.message : 'Failed to update ingredient');
+  }
+}
+
+// =============================================================
+// 10. deleteIngredient
+// =============================================================
+
+export async function deleteIngredient(
+  ingredientId: string,
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = z.string().uuid('Invalid ingredient UUID').safeParse(ingredientId);
+  if (!parsed.success) return zodErr(parsed.error);
+
+  try {
+    const supabase = await createClient();
+
+    const { error: delErr } = await supabase
+      .from('ingredients')
+      .delete()
+      .eq('id', parsed.data);
+
+    if (delErr) return err(delErr.message);
+
+    revalidatePath('/library');
+    revalidatePath('/');
+    revalidatePath('/insights');
+    return ok({ id: parsed.data });
+  } catch (e) {
+    return err(e instanceof Error ? e.message : 'Failed to delete ingredient');
+  }
+}
+
+// =============================================================
+// 11. createIngredient
+// =============================================================
+
+export async function createIngredient(
+  input: {
+    name: string;
+    unit: string;
+    pack_size: number;
+    pack_cost: number;
+    calories_per_unit?: number;
+  },
+): Promise<ActionResult<Ingredient>> {
+  const parsed = createIngredientSchema.safeParse(input);
+  if (!parsed.success) return zodErr(parsed.error);
+
+  try {
+    const supabase = await createClient();
+
+    const { data: created, error: createErr } = await supabase
+      .from('ingredients')
+      .insert({
+        name: parsed.data.name,
+        unit: parsed.data.unit,
+        pack_size: parsed.data.pack_size,
+        pack_cost: parsed.data.pack_cost,
+        calories_per_unit: parsed.data.calories_per_unit ?? 0,
+      })
+      .select()
+      .single();
+
+    if (createErr) return err(createErr.message);
+
+    revalidatePath('/library');
+    revalidatePath('/');
+    revalidatePath('/insights');
+    return ok(created as Ingredient);
+  } catch (e) {
+    return err(e instanceof Error ? e.message : 'Failed to create ingredient');
+  }
+}
