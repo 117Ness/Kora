@@ -82,21 +82,21 @@ export function CreateIngredientModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-[#3E3C32]/45 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
 
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl shadow-slate-950 transition-all z-10">
+      <div className="relative w-full max-w-md rounded-3xl border border-[#C8BFA8] bg-[#F3EDE0] p-6 sm:p-7 shadow-2xl transition-all z-10 text-[#3E3C32]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="flex items-center justify-between border-b border-[#C8BFA8] pb-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <PackagePlus className="h-5 w-5" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EBE3D2] text-[#7A7463] border border-[#C8BFA8] shadow-xs">
+              <PackagePlus className="h-5 w-5" strokeWidth={1.5} />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">New Pantry Ingredient</h3>
-              <p className="text-xs text-slate-400">
+              <h3 className="font-serif text-lg font-bold text-[#3E3C32] tracking-tight">New Pantry Ingredient</h3>
+              <p className="text-xs text-[#7D7765] font-sans">
                 Register a raw grocery item with packaging cost
               </p>
             </div>
@@ -104,16 +104,16 @@ export function CreateIngredientModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+            className="rounded-full p-2 text-[#7D7765] hover:text-[#3E3C32] hover:bg-[#EBE3D2] border border-[#C8BFA8]/60 transition-colors"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" strokeWidth={1.5} />
           </button>
         </div>
 
-        {/* Error message */}
+        {/* Error banner */}
         {error && (
-          <div className="mt-4 flex items-center gap-2 rounded-xl bg-rose-500/10 border border-rose-500/20 p-3 text-xs text-rose-300">
-            <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+          <div className="mt-4 flex items-center gap-2 rounded-xl bg-[#B86B4B]/15 border border-[#B86B4B]/40 p-3 text-xs text-[#B86B4B]">
+            <AlertCircle className="h-4 w-4 shrink-0" strokeWidth={1.5} />
             <span>{error}</span>
           </div>
         )}
@@ -121,109 +121,109 @@ export function CreateIngredientModal({
         {/* Form */}
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-              Ingredient Name <span className="text-emerald-400">*</span>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[#3E3C32] mb-1.5 font-sans">
+              Ingredient Name <span className="text-[#B86B4B]">*</span>
             </label>
             <input
               type="text"
+              required
+              placeholder="e.g. Extra Virgin Olive Oil"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Rolled Oats, Greek Yogurt, Olive Oil"
-              className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3.5 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
-              required
+              className="w-full rounded-xl bg-[#F7F2E7] border border-[#C8BFA8] px-3.5 py-2 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] shadow-xs transition-colors"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Unit <span className="text-emerald-400">*</span>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[#3E3C32] mb-1.5 font-sans">
+                Unit of Measure
               </label>
-              <select
+              <input
+                type="text"
+                list="pantry-units"
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
-              >
+                className="w-full rounded-xl bg-[#F7F2E7] border border-[#C8BFA8] px-3.5 py-2 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] shadow-xs transition-colors"
+              />
+              <datalist id="pantry-units">
                 {DEFAULT_UNITS.map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
+                  <option key={u} value={u} />
                 ))}
-              </select>
+              </datalist>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Pack Size ({unit}) <span className="text-emerald-400">*</span>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[#3E3C32] mb-1.5 font-sans">
+                Pack Size ({unit || 'unit'}) <span className="text-[#B86B4B]">*</span>
               </label>
               <input
                 type="number"
                 step="any"
                 min="0.001"
+                required
+                placeholder="1000"
                 value={packSize}
                 onChange={(e) => setPackSize(e.target.value)}
-                placeholder="1000"
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors font-mono"
-                required
+                className="w-full rounded-xl bg-[#F7F2E7] border border-[#C8BFA8] px-3.5 py-2 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] shadow-xs transition-colors"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Pack Cost ($) <span className="text-emerald-400">*</span>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[#3E3C32] mb-1.5 font-sans">
+                Pack Purchase Cost ($) <span className="text-[#B86B4B]">*</span>
               </label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
+                required
+                placeholder="8.50"
                 value={packCost}
                 onChange={(e) => setPackCost(e.target.value)}
-                placeholder="4.99"
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors font-mono"
-                required
+                className="w-full rounded-xl bg-[#F7F2E7] border border-[#C8BFA8] px-3.5 py-2 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] shadow-xs transition-colors"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Calories / {unit}
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[#3E3C32] mb-1.5 font-sans">
+                Calories / {unit || 'unit'}
               </label>
               <input
                 type="number"
                 step="any"
                 min="0"
+                placeholder="0"
                 value={caloriesPerUnit}
                 onChange={(e) => setCaloriesPerUnit(e.target.value)}
-                placeholder="3.8"
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors font-mono"
+                className="w-full rounded-xl bg-[#F7F2E7] border border-[#C8BFA8] px-3.5 py-2 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] shadow-xs transition-colors"
               />
             </div>
           </div>
 
-          {/* Computed Unit Cost Preview */}
-          <div className="flex items-center justify-between rounded-xl bg-slate-950/70 p-3 border border-slate-800/80 text-xs">
-            <span className="text-slate-400">Computed Unit Rate:</span>
-            <span className="font-bold text-emerald-400 font-mono">
+          {/* Unit Cost Preview Pill */}
+          <div className="flex items-center justify-between rounded-2xl bg-[#EBE3D2] border border-[#C8BFA8] px-4 py-3 text-xs">
+            <span className="text-[#7D7765] font-sans">Computed Unit Rate:</span>
+            <span className="font-bold text-[#7A7463] font-mono">
               {previewUnitCost}
             </span>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800/80">
+          {/* Modal Actions */}
+          <div className="mt-6 flex items-center justify-end gap-3 pt-3 border-t border-[#C8BFA8]">
             <button
               type="button"
               onClick={onClose}
-              disabled={isPending}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
+              className="px-4 py-2 rounded-full text-xs font-medium text-[#7D7765] hover:text-[#3E3C32] hover:bg-[#EBE3D2] transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isPending}
-              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/10 transition-colors disabled:opacity-50"
+              className="px-5 py-2 rounded-full text-xs font-semibold bg-[#7A7463] hover:bg-[#696353] text-[#F7F2E7] border border-[#7A7463] shadow-xs transition-all disabled:opacity-50"
             >
               {isPending ? 'Saving...' : 'Add Ingredient'}
             </button>
@@ -233,3 +233,5 @@ export function CreateIngredientModal({
     </div>
   );
 }
+
+export default CreateIngredientModal;

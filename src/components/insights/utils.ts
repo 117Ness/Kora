@@ -23,15 +23,19 @@ export function formatDateShort(dateStr: string): string {
   return dateStr;
 }
 
+/**
+ * Earthy palette strokes & fills for Kora's warm editorial cookbook charts
+ * Sage #6B7F5E, Terracotta #B86B4B, Ochre #C49A45, Olive #7A7463
+ */
 export const CHART_PALETTE = [
-  '#10b981', // emerald-500
-  '#06b6d4', // cyan-500
-  '#8b5cf6', // violet-500
-  '#f59e0b', // amber-500
-  '#ec4899', // pink-500
-  '#14b8a6', // teal-500
-  '#3b82f6', // blue-500
-  '#f97316', // orange-500
-  '#6366f1', // indigo-500
-  '#a855f7', // purple-500
+  '#7A7463', // olive
+  '#6B7F5E', // sage
+  '#B86B4B', // terracotta
+  '#C49A45', // ochre
+  '#8E8774', // warm olive-taupe
+  '#5B6E4E', // deep sage
+  '#A05A3D', // deep terracotta
+  '#AD8537', // deep ochre
+  '#9B9482', // muted taupe
+  '#4A4639', // deep olive-charcoal
 ];

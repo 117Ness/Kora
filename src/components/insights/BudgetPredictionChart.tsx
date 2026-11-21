@@ -101,32 +101,31 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
 
   return (
     <div className="space-y-6">
-      {/* Chart Section */}
-      <div className="rounded-3xl border border-slate-800/90 bg-gradient-to-b from-slate-900/80 via-slate-900/60 to-slate-950/90 p-5 sm:p-6 shadow-xl shadow-slate-950/40">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+      {/* Chart Section: Trajectory and Daily Spend */}
+      <div className="rounded-3xl border border-[#C8BFA8] bg-[#EBE3D2] p-5 sm:p-6 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#C8BFA8] pb-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-              <TrendingUp className="h-5 w-5" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F7F2E7] text-[#7A7463] border border-[#C8BFA8] shadow-xs">
+              <TrendingUp className="h-5 w-5" strokeWidth={1.5} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">
-                Budget Burn &amp; Monthly Trajectory
+              <h3 className="font-serif text-base font-bold text-[#3E3C32] tracking-tight">
+                Spend Velocity &amp; Month-End Trajectory
               </h3>
-              <p className="text-xs text-slate-400">
-                Cumulative spend to date alongside projected end-of-month target (
-                {boundaries.monthLabel})
+              <p className="text-xs text-[#7D7765] font-sans">
+                Cumulative actual expenses alongside predictive linear forecast
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 text-xs">
+          <div className="flex items-center gap-4 text-xs font-sans">
             <div className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              <span className="text-slate-300">Actual Spend</span>
+              <span className="h-2 w-2 rounded-full bg-[#7A7463]" />
+              <span className="text-[#3E3C32] font-medium">Actual ({formatCurrency(budget.spentSoFar)})</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-cyan-400" />
-              <span className="text-slate-300">Projected Forecast</span>
+              <span className="h-2 w-2 rounded-full bg-[#B86B4B]" />
+              <span className="text-[#3E3C32] font-medium">Forecast ({formatCurrency(budget.projectedMonthlyCost)})</span>
             </div>
           </div>
         </div>
@@ -136,23 +135,23 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={timelineData}
-              margin={{ top: 10, right: 20, left: 10, bottom: 5 }}
+              margin={{ top: 10, right: 30, left: 10, bottom: 5 }}
             >
               <defs>
                 <linearGradient id="actualGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                  <stop offset="5%" stopColor="#7A7463" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#7A7463" stopOpacity={0.0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#C8BFA8" opacity={0.6} />
               <XAxis
                 dataKey="day"
-                stroke="#64748b"
+                stroke="#7D7765"
                 fontSize={11}
                 interval={Math.floor(boundaries.daysInMonth / 6)}
               />
               <YAxis
-                stroke="#64748b"
+                stroke="#7D7765"
                 fontSize={11}
                 tickFormatter={(val) => `$${val}`}
                 width={55}
@@ -162,20 +161,20 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
                   if (active && payload && payload.length) {
                     const item = payload[0].payload as typeof timelineData[0];
                     return (
-                      <div className="rounded-xl border border-slate-700/80 bg-slate-900 p-3 shadow-2xl text-xs space-y-1.5">
-                        <p className="font-semibold text-slate-200 border-b border-slate-800 pb-1">
+                      <div className="rounded-2xl border border-[#C8BFA8] bg-[#F3EDE0] p-3.5 shadow-xl text-xs space-y-1.5 text-[#3E3C32]">
+                        <p className="font-serif font-bold text-[#3E3C32] border-b border-[#C8BFA8] pb-1">
                           {label} ({boundaries.monthLabel})
                         </p>
                         {item.actualDaily != null && item.actualDaily > 0 && (
-                          <div className="flex items-center justify-between gap-4 text-slate-300">
+                          <div className="flex items-center justify-between gap-4 text-[#7D7765]">
                             <span>Daily Spend:</span>
-                            <span className="font-mono font-medium text-slate-100">
+                            <span className="font-mono font-medium text-[#3E3C32]">
                               {formatCurrency(item.actualDaily)}
                             </span>
                           </div>
                         )}
                         {item.actualCumulative != null && (
-                          <div className="flex items-center justify-between gap-4 text-emerald-400 font-semibold">
+                          <div className="flex items-center justify-between gap-4 text-[#7A7463] font-semibold">
                             <span>Cumulative Spend:</span>
                             <span className="font-mono">
                               {formatCurrency(item.actualCumulative)}
@@ -183,7 +182,7 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
                           </div>
                         )}
                         {item.projectedCumulative != null && (
-                          <div className="flex items-center justify-between gap-4 text-cyan-400 font-semibold">
+                          <div className="flex items-center justify-between gap-4 text-[#B86B4B] font-semibold">
                             <span>Projected Cost:</span>
                             <span className="font-mono">
                               {formatCurrency(item.projectedCumulative)}
@@ -196,28 +195,28 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
                   return null;
                 }}
               />
-              {/* Daily bars for actual spend */}
+              {/* Daily bars for actual spend in Ochre #C49A45 */}
               <Bar
                 dataKey="actualDaily"
-                fill="#3b82f6"
-                opacity={0.4}
+                fill="#C49A45"
+                opacity={0.55}
                 barSize={6}
                 name="Daily Spend"
               />
-              {/* Actual Cumulative Spend Area */}
+              {/* Actual Cumulative Spend Area in Olive #7A7463 */}
               <Area
                 type="monotone"
                 dataKey="actualCumulative"
-                stroke="#10b981"
+                stroke="#7A7463"
                 strokeWidth={2.5}
                 fill="url(#actualGradient)"
                 name="Actual Cumulative Spend"
               />
-              {/* Projected Trajectory Line */}
+              {/* Projected Trajectory Line in Terracotta #B86B4B */}
               <Line
                 type="monotone"
                 dataKey="projectedCumulative"
-                stroke="#06b6d4"
+                stroke="#B86B4B"
                 strokeWidth={2.5}
                 strokeDasharray="5 5"
                 dot={false}
@@ -229,30 +228,30 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
       </div>
 
       {/* Per-Ingredient Monthly Quantity & Cost Prediction Table */}
-      <div className="rounded-3xl border border-slate-800/90 bg-gradient-to-b from-slate-900/80 via-slate-900/60 to-slate-950/90 p-5 sm:p-6 shadow-xl shadow-slate-950/40">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+      <div className="rounded-3xl border border-[#C8BFA8] bg-[#EBE3D2] p-5 sm:p-6 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#C8BFA8] pb-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20">
-              <TableIcon className="h-5 w-5" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F7F2E7] text-[#6B7F5E] border border-[#C8BFA8] shadow-xs">
+              <TableIcon className="h-5 w-5" strokeWidth={1.5} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">
+              <h3 className="font-serif text-base font-bold text-[#3E3C32] tracking-tight">
                 Ingredient Quantity &amp; Spend Projections
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#7D7765] font-sans">
                 Pantry inventory forecast extrapolated from current monthly consumption
               </p>
             </div>
           </div>
 
           <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#7D7765]" strokeWidth={1.5} />
             <input
               type="text"
               value={tableSearch}
               onChange={(e) => setTableSearch(e.target.value)}
               placeholder="Search ingredient..."
-              className="w-full rounded-xl bg-slate-950 border border-slate-800 pl-8 pr-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+              className="w-full rounded-full bg-[#F7F2E7] border border-[#C8BFA8] pl-8 pr-3.5 py-1.5 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] shadow-xs transition-colors"
             />
           </div>
         </div>
@@ -260,7 +259,7 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
         {/* Table Content */}
         <div className="mt-4">
           {filteredProjections.length === 0 ? (
-            <div className="py-12 text-center text-xs text-slate-400">
+            <div className="py-12 text-center text-xs text-[#7D7765] font-sans">
               {tableSearch
                 ? `No ingredients matched "${tableSearch}"`
                 : 'No ingredient projections available. Log meals to generate forecasts.'}
@@ -269,7 +268,7 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800/80 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  <tr className="border-b border-[#C8BFA8] text-[10px] font-semibold uppercase tracking-wider text-[#7D7765] font-sans">
                     <th className="py-2.5 px-3">Ingredient</th>
                     <th className="py-2.5 px-3 text-right">Used So Far</th>
                     <th className="py-2.5 px-3 text-right">Daily Rate</th>
@@ -277,28 +276,28 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
                     <th className="py-2.5 px-3 text-right">Projected Cost</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/50">
+                <tbody className="divide-y divide-[#C8BFA8]/60">
                   {displayedProjections.map((row) => (
                     <tr
                       key={row.ingredientId}
-                      className="hover:bg-slate-800/30 transition-colors"
+                      className="hover:bg-[#E4DCCB]/60 transition-colors"
                     >
-                      <td className="py-2.5 px-3 font-semibold text-slate-100">
+                      <td className="py-2.5 px-3 font-semibold text-[#3E3C32]">
                         <div className="flex items-center gap-2">
-                          <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
-                          <span>{row.ingredientName}</span>
+                          <span className="h-1.5 w-1.5 rounded-full bg-[#6B7F5E]" />
+                          <span className="font-serif">{row.ingredientName}</span>
                         </div>
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-300">
+                      <td className="py-2.5 px-3 text-right font-mono text-[#3E3C32]">
                         {row.usedSoFar} {row.unit}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-400">
+                      <td className="py-2.5 px-3 text-right font-mono text-[#7D7765]">
                         {row.avgDailyUsage} {row.unit}/d
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-medium text-cyan-300">
+                      <td className="py-2.5 px-3 text-right font-mono font-medium text-[#B86B4B]">
                         {row.projectedMonthlyQuantity} {row.unit}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400">
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-[#7A7463]">
                         {formatCurrency(row.projectedMonthlyCost)}
                       </td>
                     </tr>
@@ -310,23 +309,23 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
 
           {/* Expand/Collapse Button */}
           {filteredProjections.length > 7 && (
-            <div className="mt-3 flex justify-center border-t border-slate-800/80 pt-3">
+            <div className="mt-3 flex justify-center border-t border-[#C8BFA8]/70 pt-3">
               <button
                 type="button"
                 onClick={() => setShowAllRows(!showAllRows)}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#7A7463] hover:text-[#5A5546] transition-colors"
               >
                 {showAllRows ? (
                   <>
                     <span>Show Fewer Ingredients</span>
-                    <ChevronUp className="h-3.5 w-3.5" />
+                    <ChevronUp className="h-3.5 w-3.5" strokeWidth={1.5} />
                   </>
                 ) : (
                   <>
                     <span>
                       View All {filteredProjections.length} Ingredients
                     </span>
-                    <ChevronDown className="h-3.5 w-3.5" />
+                    <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.5} />
                   </>
                 )}
               </button>
@@ -337,3 +336,5 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
     </div>
   );
 }
+
+export default BudgetPredictionChart;

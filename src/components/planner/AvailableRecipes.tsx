@@ -8,7 +8,6 @@ import {
   Flame,
   Search,
   Check,
-  Sparkles,
 } from 'lucide-react';
 import type { RecipeWithIngredients } from '@/types/kora';
 import { addRecipeToDay } from '@/app/actions/kora';
@@ -19,6 +18,7 @@ import {
   formatCurrency,
   formatCalories,
 } from './utils';
+import { HerbSprigSvg } from '@/components/BotanicalAccents';
 
 interface AvailableRecipesProps {
   selectedDay: number;
@@ -77,153 +77,134 @@ export function AvailableRecipes({
   };
 
   return (
-    <section className="space-y-4 pt-4 border-t border-slate-900">
-      {/* Header & Search */}
+    <section className="space-y-4 pt-5 border-t border-[#C8BFA8]">
+      {/* Header & Pill Search Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <BookOpen className="h-4 w-4 text-emerald-400" />
-          <h2 className="text-lg font-bold text-slate-100">Recipe Library</h2>
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+          <BookOpen className="h-4 w-4 text-[#7A7463]" strokeWidth={1.5} />
+          <h2 className="font-serif text-lg font-bold text-[#3E3C32]">Recipe Library</h2>
+          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#EBE3D2] text-[#7D7765] border border-[#C8BFA8]">
             {recipes.length} {recipes.length === 1 ? 'recipe' : 'recipes'}
           </span>
         </div>
 
-        {/* Search Bar */}
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+        {/* Pill Search Input */}
+        <div className="relative w-full sm:w-80">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#7D7765]" strokeWidth={1.5} />
           <input
             type="text"
             placeholder="Search recipes or ingredients..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-xl bg-slate-900 border border-slate-800 pl-9 pr-4 py-1.5 text-xs text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
+            className="w-full rounded-full bg-[#F7F2E7] border border-[#C8BFA8] pl-10 pr-4 py-2 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] shadow-xs transition-colors"
           />
         </div>
       </div>
 
-      {/* Recipes Grid */}
+      {/* Available Recipes Grid */}
       {filteredRecipes.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 p-8 text-center space-y-3">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-800/80 text-slate-400">
-            <BookOpen className="h-6 w-6 stroke-[1.8]" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-slate-200">
-              {searchQuery ? 'No recipes match your search' : 'No recipes created yet'}
-            </h3>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
-              {searchQuery
-                ? 'Try a different ingredient name or clear the search query.'
-                : 'Build your collection of nutritious, cost-effective meals.'}
-            </p>
-          </div>
-          {onOpenCreateModal && !searchQuery && (
+        <div className="rounded-2xl border border-dashed border-[#C8BFA8] bg-[#EBE3D2]/40 p-10 text-center">
+          <HerbSprigSvg className="h-8 w-8 text-[#7A7463]/70 mx-auto mb-2" />
+          <h3 className="font-serif text-sm font-semibold text-[#3E3C32]">
+            {searchQuery
+              ? `No recipes match "${searchQuery}"`
+              : 'Your recipe library is empty'}
+          </h3>
+          <p className="text-xs text-[#7D7765] max-w-sm mx-auto mt-1 font-sans">
+            {searchQuery
+              ? 'Try a different ingredient name or clear the search filter.'
+              : 'Add your first recipe using the + button to build your kitchen collection.'}
+          </p>
+          {!searchQuery && onOpenCreateModal && (
             <button
               type="button"
               onClick={onOpenCreateModal}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-colors shadow-lg shadow-emerald-500/10"
+              className="mt-3 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-[#7A7463] text-[#F7F2E7] hover:bg-[#696353] border border-[#7A7463] shadow-xs"
             >
-              <Plus className="h-4 w-4" />
-              <span>Create First Recipe</span>
+              <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+              <span>Create Recipe</span>
             </button>
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredRecipes.map((recipe) => {
             const cost = calculateRecipeCost(recipe);
             const calories = calculateRecipeCalories(recipe);
             const isAdding = addingId === recipe.id;
-            const hasRecentFeedback = feedback?.recipeId === recipe.id;
+            const isAdded = feedback?.recipeId === recipe.id;
+            const ingredientCount = recipe.recipe_ingredients?.length || 0;
 
             return (
               <div
                 key={recipe.id}
-                className="flex flex-col justify-between rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 transition-all hover:border-slate-700 hover:bg-slate-900/90 shadow-sm"
+                className="group relative flex flex-col justify-between rounded-2xl border border-[#C8BFA8] bg-[#EBE3D2] p-4 sm:p-5 transition-all hover:border-[#7A7463]/80 hover:shadow-sm shadow-xs"
               >
-                <div className="space-y-2.5">
+                {/* Botanical fine-line accent */}
+                <div className="absolute right-4 top-4 opacity-25 group-hover:opacity-60 transition-opacity pointer-events-none">
+                  <HerbSprigSvg className="h-5 w-5 text-[#7A7463]" />
+                </div>
+
+                <div className="space-y-2.5 relative z-10">
                   {/* Title & Notes */}
-                  <div>
-                    <h4 className="text-base font-bold text-white tracking-tight line-clamp-1">
+                  <div className="pr-6">
+                    <h4 className="recipe-title font-serif text-base font-bold text-[#3E3C32] tracking-tight line-clamp-1">
                       {recipe.name}
                     </h4>
                     {recipe.notes ? (
-                      <p className="text-xs text-slate-400 line-clamp-1 mt-0.5 italic">
+                      <p className="text-xs text-[#7D7765] line-clamp-1 mt-0.5 italic font-sans">
                         {recipe.notes}
                       </p>
                     ) : (
-                      <p className="text-[11px] text-slate-400 mt-0.5">
+                      <p className="text-[11px] text-[#7D7765] mt-0.5 font-sans">
                         Standard recipe profile
                       </p>
                     )}
                   </div>
 
-                  {/* Cost & Calories Badges */}
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-semibold text-emerald-400">
-                      <DollarSign className="h-3 w-3" />
-                      {formatCurrency(cost)}
+                  {/* Badges strip */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#F7F2E7] border border-[#C8BFA8] px-2.5 py-0.5 text-xs font-semibold text-[#3E3C32] shadow-xs">
+                      <DollarSign className="h-3 w-3 text-[#7A7463]" strokeWidth={2} />
+                      <span className="font-serif">{formatCurrency(cost)}</span>
                     </span>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-semibold text-amber-400">
-                      <Flame className="h-3 w-3" />
-                      {formatCalories(calories)}
-                    </span>
-                  </div>
 
-                  {/* Ingredients Badges */}
-                  <div>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
-                      Ingredients ({recipe.recipe_ingredients?.length || 0})
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#F7F2E7] border border-[#C8BFA8] px-2.5 py-0.5 text-xs font-semibold text-[#3E3C32] shadow-xs">
+                      <Flame className="h-3 w-3 text-[#B86B4B]" strokeWidth={2} />
+                      <span className="font-serif">{formatCalories(calories)}</span>
                     </span>
-                    <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto scrollbar-none">
-                      {recipe.recipe_ingredients?.length ? (
-                        recipe.recipe_ingredients.map((ri) => (
-                          <span
-                            key={ri.id || ri.ingredient_id}
-                            className="inline-flex items-center gap-1 rounded-md bg-slate-950/80 border border-slate-800 px-2 py-0.5 text-[11px] text-slate-300"
-                          >
-                            <span>{ri.ingredient?.name || 'Item'}</span>
-                            <span className="text-slate-400 text-[10px]">
-                              {ri.quantity_used}
-                              {ri.ingredient?.unit || ''}
-                            </span>
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-xs text-slate-400 italic">
-                          No ingredients linked
-                        </span>
-                      )}
-                    </div>
+
+                    <span className="text-[11px] text-[#7D7765] font-sans">
+                      {ingredientCount} {ingredientCount === 1 ? 'item' : 'items'}
+                    </span>
                   </div>
                 </div>
 
-                {/* Card Action */}
-                <div className="pt-4 mt-3 border-t border-slate-800/80">
+                {/* Bottom Action */}
+                <div className="mt-4 pt-3 border-t border-[#C8BFA8]/70 flex items-center justify-between">
+                  <span className="text-[11px] font-medium text-[#7D7765]">
+                    Plan for {dayName}
+                  </span>
+
                   <button
                     type="button"
                     disabled={isPending || isAdding}
                     onClick={() => handleAdd(recipe)}
-                    className={`w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold transition-all duration-150 ${
-                      hasRecentFeedback
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-800 hover:bg-emerald-500 text-slate-200 hover:text-slate-950 border border-slate-700 hover:border-emerald-400'
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all shadow-xs ${
+                      isAdded
+                        ? 'bg-[#6B7F5E] text-[#F7F2E7]'
+                        : 'bg-[#7A7463] hover:bg-[#696353] text-[#F7F2E7] border border-[#7A7463]'
                     } disabled:opacity-50`}
                   >
-                    {hasRecentFeedback ? (
+                    {isAdded ? (
                       <>
-                        <Check className="h-3.5 w-3.5" />
-                        <span>{feedback.message}</span>
-                      </>
-                    ) : isAdding ? (
-                      <>
-                        <Sparkles className="h-3.5 w-3.5 animate-spin text-emerald-400" />
-                        <span>Adding...</span>
+                        <Check className="h-3.5 w-3.5" strokeWidth={2} />
+                        <span>Added</span>
                       </>
                     ) : (
                       <>
-                        <Plus className="h-3.5 w-3.5" />
-                        <span>Add to {dayName}</span>
+                        <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                        <span>{isAdding ? 'Adding...' : 'Add to Day'}</span>
                       </>
                     )}
                   </button>

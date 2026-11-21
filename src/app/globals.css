@@ -1,19 +1,177 @@
 @import "tailwindcss";
 
 :root {
-  --background: #020617;
-  --foreground: #f8fafc;
+  --background: #F3EDE0;
+  --foreground: #3E3C32;
+  --surface: #EBE3D2;
+  --surface-paper: #F7F2E7;
+  --border: #C8BFA8;
+  --border-hairline: #C8BFA8;
+  --muted: #7D7765;
+  --primary: #7A7463;
+  --primary-foreground: #F7F2E7;
+  --primary-hover: #696353;
+
+  --color-parchment: #F3EDE0;
+  --color-oatmeal: #EBE3D2;
+  --color-hairline: #C8BFA8;
+  --color-olive-charcoal: #3E3C32;
+  --color-taupe-olive: #7D7765;
+  --color-olive-taupe: #7A7463;
+  --color-warm-paper: #F7F2E7;
 }
 
 @theme inline {
+  --font-serif: var(--font-playfair), "Playfair Display", Georgia, Cambria, 'Times New Roman', serif;
+  --font-sans: var(--font-sans), "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-surface-paper: var(--surface-paper);
+  --color-border: var(--border);
+  --color-hairline: var(--border-hairline);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+
+  --color-parchment: #F3EDE0;
+  --color-oatmeal: #EBE3D2;
+  --color-hairline-olive: #C8BFA8;
+  --color-olive-charcoal: #3E3C32;
+  --color-taupe-olive: #7D7765;
+  --color-olive-taupe: #7A7463;
+  --color-warm-paper: #F7F2E7;
+
+  /* Remap slate utility classes to warm parchment cookbook palette */
+  --color-slate-950: #F3EDE0;
+  --color-slate-900: #EBE3D2;
+  --color-slate-850: #E4DCCB;
+  --color-slate-800: #C8BFA8;
+  --color-slate-700: #B8AF97;
+  --color-slate-600: #938B77;
+  --color-slate-500: #7D7765;
+  --color-slate-400: #7D7765;
+  --color-slate-300: #5C5747;
+  --color-slate-200: #4B473A;
+  --color-slate-100: #3E3C32;
+  --color-slate-50: #2C2A22;
+
+  /* Remap emerald utility classes to olive-taupe palette */
+  --color-emerald-700: #4E4A3D;
+  --color-emerald-600: #5E594A;
+  --color-emerald-500: #7A7463;
+  --color-emerald-400: #6B6554;
+  --color-emerald-300: #8E8774;
+  --color-emerald-200: #C8BFA8;
+  --color-emerald-100: #E4DCCB;
+  --color-emerald-50: #F3EDE0;
+
+  /* Remap cyan/teal badges to harmonious olive palette */
+  --color-cyan-500: #7A7463;
+  --color-cyan-400: #6B6554;
+  --color-cyan-300: #8E8774;
+  --color-teal-500: #7A7463;
+  --color-teal-400: #6B6554;
 }
 
+/* Base Body Styles */
 body {
-  background-color: var(--background);
-  color: var(--foreground);
+  background-color: #F3EDE0;
+  color: #3E3C32;
+  font-family: var(--font-sans), "Plus Jakarta Sans", system-ui, sans-serif;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Playfair Display: Editorial serif for headings, brand logo, recipe titles, and KPI figures */
+h1, h2, h3, h4, h5, h6,
+.font-serif,
+.kpi-figure,
+.recipe-title,
+[data-kpi] {
+  font-family: var(--font-playfair), "Playfair Display", Georgia, serif !important;
+  color: #3E3C32;
+}
+
+h1 {
+  letter-spacing: -0.025em;
+  font-weight: 700;
+}
+
+h2, h3 {
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}
+
+/* Clean sans-serif for metadata, units, and forms */
+input, textarea, select, button,
+label,
+.font-sans,
+.metadata,
+.unit-label {
+  font-family: var(--font-sans), "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+}
+
+/* Oatmeal card surfaces with hairline olive borders */
+.card-oatmeal,
+div[class*="rounded-2xl"][class*="border"] {
+  border-color: #C8BFA8;
+}
+
+/* Form inputs & controls styled with warm paper background and hairline olive border */
+input, select, textarea {
+  background-color: #F7F2E7;
+  border: 1px solid #C8BFA8;
+  color: #3E3C32;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #7A7463;
+  box-shadow: 0 0 0 1px #7A7463;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #7D7765;
+  opacity: 0.8;
+}
+
+/* Solid olive-taupe primary buttons (#7A7463 with #F7F2E7 text) */
+button.bg-emerald-500,
+a.bg-emerald-500,
+.btn-primary {
+  background-color: #7A7463 !important;
+  color: #F7F2E7 !important;
+  border: 1px solid #7A7463 !important;
+  box-shadow: 0 1px 2px 0 rgba(62, 60, 50, 0.06);
+  font-weight: 600;
+  transition: all 150ms ease-in-out;
+}
+
+button.bg-emerald-500:hover,
+a.bg-emerald-500:hover,
+.btn-primary:hover {
+  background-color: #696353 !important;
+  color: #FFFFFF !important;
+  border-color: #696353 !important;
+}
+
+/* Hairline dividers & borders */
+.border-slate-900,
+.border-slate-800,
+.border-slate-700 {
+  border-color: #C8BFA8 !important;
+}
+
+/* Headings and figures with text-white mapped to deep olive-charcoal */
+h1.text-white,
+h2.text-white,
+h3.text-white,
+h4.text-white,
+div.text-white[class*="text-2xl"],
+div.text-white[class*="text-3xl"] {
+  color: #3E3C32 !important;
 }

@@ -12,6 +12,7 @@ import { SummaryKpiCards } from './SummaryKpiCards';
 import { IngredientConsumptionChart } from './IngredientConsumptionChart';
 import { HealthTrendChart } from './HealthTrendChart';
 import { BudgetPredictionChart } from './BudgetPredictionChart';
+import { OliveSprigSvg } from '@/components/BotanicalAccents';
 
 interface InsightsViewProps {
   initialData: InsightsAnalytics;
@@ -31,56 +32,60 @@ export function InsightsView({ initialData }: InsightsViewProps) {
   };
 
   return (
-    <div className="space-y-8 pb-24">
-      {/* Page Header / Hero Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-900 pb-5">
+    <div className="space-y-8 pb-28">
+      {/* Page Header / Hero Bar with hairline divider and serif title */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#C8BFA8] pb-5">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-              <TrendingUp className="h-4 w-4" />
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#EBE3D2] text-[#7A7463] border border-[#C8BFA8] shadow-xs">
+              <TrendingUp className="h-4 w-4" strokeWidth={1.5} />
             </span>
-            <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
+            <h1 className="font-serif text-2xl font-bold tracking-tight text-[#3E3C32] sm:text-3xl">
               Kitchen Intelligence &amp; Analytics
             </h1>
+            <OliveSprigSvg className="h-5 w-5 text-[#7A7463] hidden sm:block opacity-75" />
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
+          <p className="text-xs sm:text-sm text-[#7D7765] mt-1.5 max-w-2xl font-sans">
             Real-time financial burn rates, nutritional intake trends, and predictive
             pantry forecasting for {data.boundaries.monthLabel}.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 rounded-xl bg-slate-900 border border-slate-800 px-3 py-1.5 text-xs text-slate-300">
-            <Calendar className="h-3.5 w-3.5 text-emerald-400" />
-            <span>{data.boundaries.monthLabel}</span>
+          <div className="flex items-center gap-2 rounded-full bg-[#EBE3D2] border border-[#C8BFA8] px-3.5 py-1.5 text-xs text-[#3E3C32] shadow-xs font-sans">
+            <Calendar className="h-3.5 w-3.5 text-[#7A7463]" strokeWidth={1.5} />
+            <span className="font-medium">{data.boundaries.monthLabel}</span>
           </div>
 
           <button
             type="button"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#EBE3D2] hover:bg-[#E4DCCB] text-[#3E3C32] border border-[#C8BFA8] shadow-xs transition-colors disabled:opacity-50"
             title="Refresh analytics dataset"
           >
             <RefreshCw
-              className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : 'text-slate-400'}`}
+              className={`h-3.5 w-3.5 text-[#7A7463] ${
+                isRefreshing ? 'animate-spin' : ''
+              }`}
+              strokeWidth={1.5}
             />
-            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+            <span>{isRefreshing ? 'Recalculating...' : 'Refresh'}</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards Strip */}
       <SummaryKpiCards data={data} />
 
-      {/* Charts Row 1: Ingredient Consumption & Health Trends */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <IngredientConsumptionChart data={data} />
-        <HealthTrendChart data={data} />
-      </div>
-
-      {/* Chart Row 2: Budget Prediction & Per-Ingredient Forecast Table */}
+      {/* Chart 1: Financial Burn & Monthly Projections */}
       <BudgetPredictionChart data={data} />
+
+      {/* Chart 2: Caloric Intake & Health Adherence */}
+      <HealthTrendChart data={data} />
+
+      {/* Chart 3: Ingredient Consumption breakdown */}
+      <IngredientConsumptionChart data={data} />
     </div>
   );
 }
