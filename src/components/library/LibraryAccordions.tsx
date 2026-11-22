@@ -7,7 +7,7 @@ import {
   Columns2,
   ChevronRight,
   ChevronDown,
-  DollarSign,
+  IndianRupee,
 } from 'lucide-react';
 import type { RecipeWithIngredients, Ingredient } from '@/types/kora';
 import { getLibraryData } from '@/app/actions/kora';
@@ -174,7 +174,7 @@ export function LibraryAccordions({
 
         <div className="col-span-2 sm:col-span-1 flex items-center gap-3 rounded-2xl bg-[#EBE3D2] border border-[#C8BFA8] p-3.5 shadow-xs">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F7F2E7] text-[#C49A45] border border-[#C8BFA8]">
-            <DollarSign className="h-4 w-4" strokeWidth={2} />
+            <IndianRupee className="h-4 w-4" strokeWidth={2} />
           </div>
           <div>
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-[#7D7765] font-sans">

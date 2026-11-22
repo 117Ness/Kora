@@ -10,6 +10,7 @@ import {
   X,
   AlertTriangle,
   Layers,
+  Scale,
 } from 'lucide-react';
 import type { Ingredient } from '@/types/kora';
 import { updateIngredient, deleteIngredient } from '@/app/actions/kora';
@@ -29,6 +30,7 @@ interface InlineEditState {
   pack_size: string;
   pack_cost: string;
   calories_per_unit: string;
+  weight_per_unit_g: string;
 }
 
 export function IngredientsTabView({
@@ -44,6 +46,7 @@ export function IngredientsTabView({
     pack_size: '',
     pack_cost: '',
     calories_per_unit: '',
+    weight_per_unit_g: '',
   });
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [isSaving, startSaveTransition] = useTransition();
@@ -68,6 +71,7 @@ export function IngredientsTabView({
       pack_size: String(ing.pack_size),
       pack_cost: String(ing.pack_cost),
       calories_per_unit: String(ing.calories_per_unit ?? 0),
+      weight_per_unit_g: ing.weight_per_unit_g ? String(ing.weight_per_unit_g) : '',
     });
     setInlineError(null);
   };
@@ -77,10 +81,11 @@ export function IngredientsTabView({
     setInlineError(null);
   };
 
-  const handleSaveInline = (ingredientId: string) => {
+  const handleSaveInline = (ingredientId: string, currentUnit: string) => {
     const size = parseFloat(editValues.pack_size);
     const cost = parseFloat(editValues.pack_cost);
     const cals = parseFloat(editValues.calories_per_unit || '0');
+    const wtG = editValues.weight_per_unit_g ? parseFloat(editValues.weight_per_unit_g) : null;
 
     if (isNaN(size) || size <= 0) {
       setInlineError('Pack size must be greater than 0');
@@ -90,6 +95,10 @@ export function IngredientsTabView({
       setInlineError('Pack cost must be 0 or greater');
       return;
     }
+    if (wtG !== null && (isNaN(wtG) || wtG <= 0)) {
+      setInlineError('Average weight per piece must be greater than 0');
+      return;
+    }
 
     setInlineError(null);
     startSaveTransition(async () => {
@@ -97,6 +106,7 @@ export function IngredientsTabView({
         pack_size: size,
         pack_cost: cost,
         calories_per_unit: isNaN(cals) ? 0 : cals,
+        weight_per_unit_g: currentUnit === 'pcs' ? wtG : undefined,
       });
 
       if (res.success) {
@@ -176,7 +186,7 @@ export function IngredientsTabView({
           <div className="hidden lg:grid lg:grid-cols-12 gap-3 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-[#7D7765] border-b border-[#C8BFA8] font-sans">
             <div className="col-span-3">Ingredient Name</div>
             <div className="col-span-2 text-right">Pack Size &amp; Unit</div>
-            <div className="col-span-2 text-right">Pack Cost</div>
+            <div className="col-span-2 text-right">Pack Cost (₹)</div>
             <div className="col-span-2 text-right">Unit Rate</div>
             <div className="col-span-2 text-right">Calories / Unit</div>
             <div className="col-span-1 text-center">Actions</div>
@@ -187,6 +197,7 @@ export function IngredientsTabView({
             {filteredIngredients.map((ing) => {
               const isInlineEditing = editingId === ing.id;
               const isConfirmingDelete = deletingId === ing.id;
+              const isCountUnit = ing.unit === 'pcs' || ing.unit === 'crate' || ing.unit === 'dozen';
 
               const liveSize = isInlineEditing
                 ? parseFloat(editValues.pack_size) || 0
@@ -246,47 +257,83 @@ export function IngredientsTabView({
 
                   {/* Desktop Grid Layout */}
                   <div className="hidden lg:grid lg:grid-cols-12 gap-3 items-center text-xs">
-                    {/* Name */}
-                    <div className="col-span-3 flex items-center gap-2 min-w-0">
-                      <span className="h-2 w-2 rounded-full bg-[#7A7463] shrink-0" />
-                      <span className="font-serif font-bold text-[#3E3C32] truncate">
-                        {ing.name}
-                      </span>
-                    </div>
-
-                    {/* Pack Size & Unit */}
-                    <div className="col-span-2 text-right">
-                      {isInlineEditing ? (
-                        <div className="inline-flex items-center gap-1.5 justify-end">
-                          <input
-                            type="number"
-                            step="any"
-                            min="0.001"
-                            value={editValues.pack_size}
-                            onChange={(e) =>
-                              setEditValues((prev) => ({
-                                ...prev,
-                                pack_size: e.target.value,
-                              }))
-                            }
-                            className="w-20 rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-1 text-xs text-[#3E3C32] text-right focus:outline-none focus:border-[#7A7463] font-mono"
-                          />
-                          <span className="text-[#7D7765] font-mono text-[11px]">
-                            {ing.unit}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-[#3E3C32] font-mono">
-                          {ing.pack_size} {ing.unit}
+                    {/* Name & Metadata */}
+                    <div className="col-span-3 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-[#7A7463] shrink-0" />
+                        <span className="font-serif font-bold text-[#3E3C32] truncate">
+                          {ing.name}
                         </span>
+                      </div>
+                      {/* Weight per piece tag for pcs */}
+                      {isCountUnit && ing.weight_per_unit_g && (
+                        <div className="mt-1 flex items-center gap-1 text-[11px] text-[#7D7765] pl-4 font-sans">
+                          <Scale className="h-3 w-3 text-[#7A7463]" strokeWidth={1.5} />
+                          <span>{ing.weight_per_unit_g}g / pc</span>
+                        </div>
                       )}
                     </div>
 
-                    {/* Pack Cost */}
+                    {/* Pack Size & Unit (Dynamic label: Pack Size (pcs)) */}
+                    <div className="col-span-2 text-right">
+                      {isInlineEditing ? (
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="inline-flex items-center gap-1.5 justify-end">
+                            <input
+                              type="number"
+                              step="any"
+                              min="0.001"
+                              value={editValues.pack_size}
+                              onChange={(e) =>
+                                setEditValues((prev) => ({
+                                  ...prev,
+                                  pack_size: e.target.value,
+                                }))
+                              }
+                              className="w-20 rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-1 text-xs text-[#3E3C32] text-right focus:outline-none focus:border-[#7A7463] font-mono"
+                            />
+                            <span className="text-[#7D7765] font-mono text-[11px]">
+                              {ing.unit}
+                            </span>
+                          </div>
+                          {isCountUnit && (
+                            <div className="inline-flex items-center gap-1 text-[10px] text-[#7D7765]">
+                              <span>Avg wt:</span>
+                              <input
+                                type="number"
+                                step="any"
+                                min="0.1"
+                                placeholder="g/pc"
+                                value={editValues.weight_per_unit_g}
+                                onChange={(e) =>
+                                  setEditValues((prev) => ({
+                                    ...prev,
+                                    weight_per_unit_g: e.target.value,
+                                  }))
+                                }
+                                className="w-14 rounded-md bg-[#F7F2E7] border border-[#C8BFA8] px-1.5 py-0.5 text-[10px] text-right focus:outline-none focus:border-[#7A7463] font-mono"
+                              />
+                              <span>g</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-end">
+                          <span className="text-[#3E3C32] font-mono font-medium">
+                            {ing.pack_size} {ing.unit}
+                          </span>
+                          <span className="text-[10px] text-[#7D7765] font-sans">
+                            {isCountUnit ? 'Pack Size (pcs)' : `Pack (${ing.unit})`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Pack Cost in ₹ */}
                     <div className="col-span-2 text-right">
                       {isInlineEditing ? (
                         <div className="inline-flex items-center gap-1 justify-end">
-                          <span className="text-[#7D7765] font-mono text-[11px]">$</span>
+                          <span className="text-[#7D7765] font-mono text-[11px]">₹</span>
                           <input
                             type="number"
                             step="0.01"
@@ -302,20 +349,20 @@ export function IngredientsTabView({
                           />
                         </div>
                       ) : (
-                        <span className="text-[#3E3C32] font-mono">
+                        <span className="text-[#3E3C32] font-mono font-medium">
                           {formatCurrency(Number(ing.pack_cost))}
                         </span>
                       )}
                     </div>
 
-                    {/* Computed Unit Cost */}
+                    {/* Computed Unit Rate (e.g. ₹7.00 / pc) */}
                     <div className="col-span-2 text-right">
                       <span className="font-bold text-[#7A7463] font-mono">
                         {computedRate}
                       </span>
                     </div>
 
-                    {/* Calories / Unit */}
+                    {/* Calories / Unit (e.g. 75 kcal / pc) */}
                     <div className="col-span-2 text-right">
                       {isInlineEditing ? (
                         <div className="inline-flex items-center gap-1 justify-end">
@@ -333,7 +380,7 @@ export function IngredientsTabView({
                             className="w-20 rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-1 text-xs text-[#3E3C32] text-right focus:outline-none focus:border-[#7A7463] font-mono"
                           />
                           <span className="text-[#7D7765] font-mono text-[10px]">
-                            kcal
+                            {isCountUnit ? 'kcal/pc' : 'kcal'}
                           </span>
                         </div>
                       ) : (
@@ -350,7 +397,7 @@ export function IngredientsTabView({
                           <button
                             type="button"
                             disabled={isSaving}
-                            onClick={() => handleSaveInline(ing.id)}
+                            onClick={() => handleSaveInline(ing.id, ing.unit)}
                             className="flex h-7 w-7 items-center justify-center rounded-full bg-[#7A7463] hover:bg-[#696353] text-[#F7F2E7] transition-colors disabled:opacity-50 shadow-xs"
                             title="Save inline changes"
                           >
@@ -392,11 +439,18 @@ export function IngredientsTabView({
                   {/* Mobile / Narrow Screen Card Layout */}
                   <div className="lg:hidden space-y-3">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-[#7A7463] shrink-0" />
-                        <span className="font-serif font-bold text-sm text-[#3E3C32]">
-                          {ing.name}
-                        </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-[#7A7463] shrink-0" />
+                          <span className="font-serif font-bold text-sm text-[#3E3C32]">
+                            {ing.name}
+                          </span>
+                        </div>
+                        {isCountUnit && ing.weight_per_unit_g && (
+                          <span className="text-[11px] text-[#7D7765] pl-4 font-sans block mt-0.5">
+                            {ing.weight_per_unit_g}g per piece
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1.5">
@@ -405,7 +459,7 @@ export function IngredientsTabView({
                             <button
                               type="button"
                               disabled={isSaving}
-                              onClick={() => handleSaveInline(ing.id)}
+                              onClick={() => handleSaveInline(ing.id, ing.unit)}
                               className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#7A7463] hover:bg-[#696353] text-[#F7F2E7] font-semibold text-xs transition-colors disabled:opacity-50 shadow-xs"
                             >
                               <Check className="h-3 w-3 stroke-[2.5]" />
@@ -448,7 +502,7 @@ export function IngredientsTabView({
                       <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#C8BFA8]/70">
                         <div>
                           <label className="block text-[10px] uppercase font-semibold text-[#7D7765] mb-1 font-sans">
-                            Pack Size ({ing.unit})
+                            {isCountUnit ? 'Pack Size (pcs)' : `Pack (${ing.unit})`}
                           </label>
                           <input
                             type="number"
@@ -465,7 +519,7 @@ export function IngredientsTabView({
                         </div>
                         <div>
                           <label className="block text-[10px] uppercase font-semibold text-[#7D7765] mb-1 font-sans">
-                            Pack Cost ($)
+                            Pack Cost (₹)
                           </label>
                           <input
                             type="number"
@@ -480,9 +534,29 @@ export function IngredientsTabView({
                             className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2.5 py-1 text-xs text-[#3E3C32] focus:outline-none focus:border-[#7A7463]"
                           />
                         </div>
+                        {isCountUnit && (
+                          <div>
+                            <label className="block text-[10px] uppercase font-semibold text-[#7D7765] mb-1 font-sans">
+                              Avg. Wt/pc (g)
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              placeholder="50"
+                              value={editValues.weight_per_unit_g}
+                              onChange={(e) =>
+                                setEditValues((prev) => ({
+                                  ...prev,
+                                  weight_per_unit_g: e.target.value,
+                                }))
+                              }
+                              className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2.5 py-1 text-xs text-[#3E3C32] focus:outline-none focus:border-[#7A7463]"
+                            />
+                          </div>
+                        )}
                         <div>
                           <label className="block text-[10px] uppercase font-semibold text-[#7D7765] mb-1 font-sans">
-                            Cal / Unit
+                            {isCountUnit ? 'Calories / pc' : 'Cal / Unit'}
                           </label>
                           <input
                             type="number"
@@ -510,7 +584,7 @@ export function IngredientsTabView({
                       <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#C8BFA8]/70 text-xs">
                         <div>
                           <span className="block text-[10px] uppercase text-[#7D7765] font-sans">
-                            Pack
+                            {isCountUnit ? 'Pack (pcs)' : 'Pack'}
                           </span>
                           <span className="font-mono text-[#3E3C32]">
                             {ing.pack_size} {ing.unit}

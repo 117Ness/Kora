@@ -8,7 +8,7 @@ import {
   Sparkles,
   ChefHat,
   AlertCircle,
-  DollarSign,
+  IndianRupee,
   Flame,
 } from 'lucide-react';
 import {
@@ -26,9 +26,8 @@ interface IngredientRowState {
   pack_size: string;
   pack_cost: string;
   calories_per_unit: string;
+  weight_per_unit_g: string;
 }
-
-const DEFAULT_UNITS = ['g', 'ml', 'pcs', 'cup', 'tbsp', 'tsp', 'oz', 'serving'];
 
 interface CreateRecipeModalProps {
   isOpen: boolean;
@@ -58,6 +57,7 @@ export function CreateRecipeModal({
       pack_size: '1000',
       pack_cost: '',
       calories_per_unit: '',
+      weight_per_unit_g: '',
     },
   ]);
 
@@ -74,6 +74,7 @@ export function CreateRecipeModal({
         pack_size: '1000',
         pack_cost: '',
         calories_per_unit: '',
+        weight_per_unit_g: '',
       },
     ]);
   };
@@ -89,7 +90,28 @@ export function CreateRecipeModal({
     value: string
   ) => {
     setIngredients((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+      prev.map((item) => {
+        if (item.id !== id) return item;
+
+        const updated = { ...item, [field]: value };
+
+        // If unit changed, update smart defaults for pack size
+        if (field === 'unit') {
+          if (value === 'pcs' && (item.pack_size === '1000' || item.pack_size === '500')) {
+            updated.pack_size = '1';
+          } else if (value === 'crate') {
+            updated.pack_size = '30';
+          } else if (value === 'dozen') {
+            updated.pack_size = '12';
+          } else if ((value === 'g' || value === 'ml') && (item.pack_size === '1' || item.pack_size === '12' || item.pack_size === '30')) {
+            updated.pack_size = '1000';
+          } else if (value === 'kg' || value === 'L') {
+            updated.pack_size = '1';
+          }
+        }
+
+        return updated;
+      })
     );
   };
 
@@ -129,6 +151,7 @@ export function CreateRecipeModal({
       const size = parseFloat(ing.pack_size);
       const cost = parseFloat(ing.pack_cost);
       const cals = parseFloat(ing.calories_per_unit || '0');
+      const wtG = ing.weight_per_unit_g ? parseFloat(ing.weight_per_unit_g) : null;
 
       if (isNaN(qty) || qty <= 0) {
         setError(`Quantity for "${ing.name}" must be greater than 0`);
@@ -146,6 +169,10 @@ export function CreateRecipeModal({
         setError(`Calories for "${ing.name}" must be 0 or greater`);
         return;
       }
+      if (wtG !== null && (isNaN(wtG) || wtG <= 0)) {
+        setError(`Avg. weight for "${ing.name}" must be greater than 0`);
+        return;
+      }
     }
 
     setError(null);
@@ -159,6 +186,7 @@ export function CreateRecipeModal({
         pack_size: parseFloat(ing.pack_size) || 1000,
         pack_cost: parseFloat(ing.pack_cost) || 0,
         calories_per_unit: parseFloat(ing.calories_per_unit) || 0,
+        weight_per_unit_g: ing.weight_per_unit_g ? parseFloat(ing.weight_per_unit_g) : null,
         quantity_used: parseFloat(ing.quantity_used) || 0,
       })),
     };
@@ -177,6 +205,7 @@ export function CreateRecipeModal({
             pack_size: '1000',
             pack_cost: '',
             calories_per_unit: '',
+            weight_per_unit_g: '',
           },
         ]);
         onClose();
@@ -226,7 +255,7 @@ export function CreateRecipeModal({
                     <OliveSprigSvg className="h-5 w-5 text-[#7A7463]/70 hidden sm:block" />
                   </div>
                   <p className="text-xs text-[#7D7765] font-sans">
-                    Define ingredients, unit economics, and nutrition.
+                    Define ingredients, unit economics, and macro nutrition.
                   </p>
                 </div>
               </div>
@@ -264,7 +293,7 @@ export function CreateRecipeModal({
                     id={`recipe-name-${uniqueId}`}
                     type="text"
                     required
-                    placeholder="e.g. Rosemary Roasted Chicken"
+                    placeholder="e.g. Masala Omelette, Palak Paneer, Sambar"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full rounded-xl bg-[#F7F2E7] border border-[#C8BFA8] px-3.5 py-2 text-sm text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] shadow-xs transition-colors"
@@ -284,7 +313,7 @@ export function CreateRecipeModal({
                   <textarea
                     id={`recipe-notes-${uniqueId}`}
                     rows={2}
-                    placeholder="Slow cooked with olive oil, garlic, and fresh herbs..."
+                    placeholder="Tempered with mustard seeds, curry leaves, and green chillies..."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     className="w-full rounded-xl bg-[#F7F2E7] border border-[#C8BFA8] px-3.5 py-2 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] resize-none shadow-xs transition-colors"
@@ -300,7 +329,7 @@ export function CreateRecipeModal({
                       Ingredients &amp; Unit Economics
                     </h4>
                     <p className="text-[11px] text-[#7D7765] font-sans">
-                      Ingredient cost will calculate automatically from pack price and usage.
+                      Normalized automatically into canonical database units (g, ml, pcs).
                     </p>
                   </div>
                   <button
@@ -313,171 +342,210 @@ export function CreateRecipeModal({
                   </button>
                 </div>
 
-                <div className="space-y-3 max-h-60 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#C8BFA8]">
-                  {ingredients.map((ing, idx) => (
-                    <div
-                      key={ing.id}
-                      className="p-3.5 rounded-2xl bg-[#EBE3D2] border border-[#C8BFA8] space-y-2.5 shadow-xs"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-serif text-xs font-semibold text-[#3E3C32]">
-                          #{idx + 1} Ingredient Item
-                        </span>
-                        {ingredients.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveIngredientRow(ing.id)}
-                            className="p-1 rounded-full text-[#B86B4B] hover:bg-[#B86B4B]/15 transition-colors"
-                            title="Remove row"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
-                          </button>
+                <div className="space-y-3 max-h-72 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#C8BFA8]">
+                  {ingredients.map((ing, idx) => {
+                    const isCount = ing.unit === 'pcs' || ing.unit === 'crate' || ing.unit === 'dozen';
+
+                    return (
+                      <div
+                        key={ing.id}
+                        className="p-3.5 rounded-2xl bg-[#EBE3D2] border border-[#C8BFA8] space-y-2.5 shadow-xs"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-serif text-xs font-semibold text-[#3E3C32]">
+                            #{idx + 1} Ingredient Item
+                          </span>
+                          {ingredients.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveIngredientRow(ing.id)}
+                              className="p-1 rounded-full text-[#B86B4B] hover:bg-[#B86B4B]/15 transition-colors"
+                              title="Remove row"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {/* Name */}
+                          <div className="sm:col-span-2">
+                            <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
+                              Name
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Eggs, Onion, Toor Dal"
+                              value={ing.name}
+                              onChange={(e) =>
+                                handleIngredientChange(
+                                  ing.id,
+                                  'name',
+                                  e.target.value
+                                )
+                              }
+                              className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2.5 py-1.5 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463]"
+                            />
+                          </div>
+
+                          {/* Grouped Unit of Measure Dropdown */}
+                          <div>
+                            <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
+                              Unit of Measure
+                            </label>
+                            <select
+                              value={ing.unit}
+                              onChange={(e) =>
+                                handleIngredientChange(
+                                  ing.id,
+                                  'unit',
+                                  e.target.value
+                                )
+                              }
+                              className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2.5 py-1.5 text-xs text-[#3E3C32] focus:outline-none focus:ring-1 focus:ring-[#7A7463]"
+                            >
+                              <optgroup label="Weight">
+                                <option value="g">g (grams)</option>
+                                <option value="kg">kg (kilograms)</option>
+                              </optgroup>
+                              <optgroup label="Volume">
+                                <option value="ml">ml (milliliters)</option>
+                                <option value="L">L (liters)</option>
+                                <option value="tbsp">tbsp (tablespoon)</option>
+                                <option value="tsp">tsp (teaspoon)</option>
+                              </optgroup>
+                              <optgroup label="Count">
+                                <option value="pcs">pcs (pieces)</option>
+                                <option value="crate">crate (30 eggs)</option>
+                                <option value="dozen">dozen (12 pcs)</option>
+                              </optgroup>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Input Row with Dynamic Labels */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-[#C8BFA8]/60">
+                          <div>
+                            <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
+                              Qty Used
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              placeholder={isCount ? '2' : '150'}
+                              value={ing.quantity_used}
+                              onChange={(e) =>
+                                handleIngredientChange(
+                                  ing.id,
+                                  'quantity_used',
+                                  e.target.value
+                                )
+                              }
+                              className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-1 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
+                              {isCount ? 'Pack Size (pcs)' : ing.unit === 'kg' ? 'Pack Size (kg)' : ing.unit === 'L' ? 'Pack Size (L)' : `Pack (${ing.unit})`}
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              placeholder={isCount ? '1' : '1000'}
+                              value={ing.pack_size}
+                              onChange={(e) =>
+                                handleIngredientChange(
+                                  ing.id,
+                                  'pack_size',
+                                  e.target.value
+                                )
+                              }
+                              className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-1 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
+                              Pack Cost (₹)
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              placeholder="₹85.00"
+                              value={ing.pack_cost}
+                              onChange={(e) =>
+                                handleIngredientChange(
+                                  ing.id,
+                                  'pack_cost',
+                                  e.target.value
+                                )
+                              }
+                              className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-1 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
+                              {isCount ? 'Calories / pc' : `Cal / ${ing.unit}`}
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              placeholder={isCount ? '75' : '3.5'}
+                              value={ing.calories_per_unit}
+                              onChange={(e) =>
+                                handleIngredientChange(
+                                  ing.id,
+                                  'calories_per_unit',
+                                  e.target.value
+                                )
+                              }
+                              className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-1 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] font-mono"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Conditional Avg. Weight per Piece input when count unit selected */}
+                        {isCount && (
+                          <div className="pt-1.5 border-t border-[#C8BFA8]/50 flex items-center justify-between text-xs">
+                            <label className="text-[11px] font-medium text-[#7D7765] font-sans">
+                              Avg. Weight per Piece (g):
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="number"
+                                step="any"
+                                min="0.1"
+                                placeholder="50"
+                                value={ing.weight_per_unit_g}
+                                onChange={(e) =>
+                                  handleIngredientChange(
+                                    ing.id,
+                                    'weight_per_unit_g',
+                                    e.target.value
+                                  )
+                                }
+                                className="w-20 rounded-md bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-0.5 text-xs text-right text-[#3E3C32] focus:outline-none focus:ring-1 focus:ring-[#7A7463] font-mono"
+                              />
+                              <span className="text-[11px] text-[#7D7765]">g</span>
+                            </div>
+                          </div>
                         )}
                       </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        {/* Name */}
-                        <div className="sm:col-span-2">
-                          <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
-                            Name
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="e.g. Extra Virgin Olive Oil"
-                            value={ing.name}
-                            onChange={(e) =>
-                              handleIngredientChange(
-                                ing.id,
-                                'name',
-                                e.target.value
-                              )
-                            }
-                            className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2.5 py-1.5 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463]"
-                          />
-                        </div>
-
-                        {/* Unit */}
-                        <div>
-                          <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
-                            Unit
-                          </label>
-                          <input
-                            type="text"
-                            list="units-list"
-                            placeholder="g"
-                            value={ing.unit}
-                            onChange={(e) =>
-                              handleIngredientChange(
-                                ing.id,
-                                'unit',
-                                e.target.value
-                              )
-                            }
-                            className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2.5 py-1.5 text-xs text-[#3E3C32] focus:outline-none focus:ring-1 focus:ring-[#7A7463]"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-[#C8BFA8]/60">
-                        <div>
-                          <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
-                            Qty Used
-                          </label>
-                          <input
-                            type="number"
-                            step="any"
-                            placeholder="15"
-                            value={ing.quantity_used}
-                            onChange={(e) =>
-                              handleIngredientChange(
-                                ing.id,
-                                'quantity_used',
-                                e.target.value
-                              )
-                            }
-                            className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-1 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463]"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
-                            Pack Size
-                          </label>
-                          <input
-                            type="number"
-                            step="any"
-                            placeholder="500"
-                            value={ing.pack_size}
-                            onChange={(e) =>
-                              handleIngredientChange(
-                                ing.id,
-                                'pack_size',
-                                e.target.value
-                              )
-                            }
-                            className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-1 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463]"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
-                            Pack Cost ($)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            placeholder="8.50"
-                            value={ing.pack_cost}
-                            onChange={(e) =>
-                              handleIngredientChange(
-                                ing.id,
-                                'pack_cost',
-                                e.target.value
-                              )
-                            }
-                            className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-1 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463]"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-semibold text-[#7D7765] uppercase">
-                            Cal / Unit
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            placeholder="8.8"
-                            value={ing.calories_per_unit}
-                            onChange={(e) =>
-                              handleIngredientChange(
-                                ing.id,
-                                'calories_per_unit',
-                                e.target.value
-                              )
-                            }
-                            className="w-full rounded-lg bg-[#F7F2E7] border border-[#C8BFA8] px-2 py-1 text-xs text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463]"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
-
-                <datalist id="units-list">
-                  {DEFAULT_UNITS.map((u) => (
-                    <option key={u} value={u} />
-                  ))}
-                </datalist>
               </div>
 
-              {/* Calculated Summary Bar */}
+              {/* Calculated Summary Bar with IndianRupee */}
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#EBE3D2] border border-[#C8BFA8] text-xs">
                 <span className="font-serif font-bold text-[#3E3C32]">
                   Estimated Recipe Profile
                 </span>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1 text-[#3E3C32] font-bold">
-                    <DollarSign className="h-3.5 w-3.5 text-[#7A7463]" strokeWidth={2} />
+                    <IndianRupee className="h-3.5 w-3.5 text-[#7A7463]" strokeWidth={2} />
                     <span className="font-serif">{formatCurrency(calculatedCost)}</span>
                   </div>
                   <div className="flex items-center gap-1 text-[#3E3C32] font-bold">

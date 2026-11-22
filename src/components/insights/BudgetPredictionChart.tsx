@@ -153,7 +153,7 @@ export function BudgetPredictionChart({ data }: BudgetPredictionChartProps) {
               <YAxis
                 stroke="#7D7765"
                 fontSize={11}
-                tickFormatter={(val) => `$${val}`}
+                tickFormatter={(val) => `₹${val}`}
                 width={55}
               />
               <Tooltip

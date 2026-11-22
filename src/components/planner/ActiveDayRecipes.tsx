@@ -8,7 +8,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  DollarSign,
+  IndianRupee,
   Flame,
   Activity,
   Layers,
@@ -334,7 +334,7 @@ export function ActiveDayRecipes({
                     {/* Stats strip */}
                     <div className="flex items-center gap-4 text-xs pt-1">
                       <div className="flex items-center gap-1 text-[#3E3C32]">
-                        <DollarSign className="h-3.5 w-3.5 text-[#7A7463]" strokeWidth={2} />
+                        <IndianRupee className="h-3.5 w-3.5 text-[#7A7463]" strokeWidth={2} />
                         <span className="font-serif font-bold text-[#3E3C32]">
                           {formatCurrency(totalMealCost)}
                         </span>

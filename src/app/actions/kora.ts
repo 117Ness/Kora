@@ -18,6 +18,7 @@ import {
   computeInsightsAnalytics,
   type InsightsAnalytics,
 } from '@/lib/analytics';
+import { toBaseUnit } from '@/lib/units';
 
 // =============================================================
 // Generic response envelope
@@ -60,6 +61,8 @@ const RECIPE_SELECT = `
       pack_size,
       pack_cost,
       calories_per_unit,
+      weight_per_unit_g,
+      stock_quantity,
       created_at
     )
   )
@@ -234,6 +237,7 @@ const createRecipeFullSchema = z.object({
         pack_size: z.coerce.number().positive().optional(),
         pack_cost: z.coerce.number().min(0).optional(),
         calories_per_unit: z.coerce.number().min(0).optional(),
+        weight_per_unit_g: z.coerce.number().positive().nullish(),
         quantity_used: z.coerce.number().positive('Quantity used must be > 0'),
       }),
     )
@@ -274,13 +278,25 @@ export async function createRecipeWithIngredients(
       let ingredientId = ing.ingredient_id;
 
       if (!ingredientId) {
+        // Normalize pack_size/unit to canonical base
+        let canonicalUnit = ing.unit ?? 'g';
+        let canonicalPackSize = ing.pack_size ?? 1;
+        try {
+          if (ing.unit) {
+            const normalized = toBaseUnit(ing.pack_size ?? 1, ing.unit);
+            canonicalUnit = normalized.unit;
+            canonicalPackSize = normalized.value;
+          }
+        } catch { /* unknown unit, leave as-is */ }
+
         // Must have enough data to create/upsert
         const ingParsed = createIngredientSchema.safeParse({
           name: ing.name,
-          unit: ing.unit,
-          pack_size: ing.pack_size,
+          unit: canonicalUnit,
+          pack_size: canonicalPackSize,
           pack_cost: ing.pack_cost,
           calories_per_unit: ing.calories_per_unit ?? 0,
+          weight_per_unit_g: ing.weight_per_unit_g ?? null,
         });
         if (!ingParsed.success) return zodErr(ingParsed.error);
 
@@ -304,6 +320,7 @@ export async function createRecipeWithIngredients(
               pack_size: ingParsed.data.pack_size,
               pack_cost: ingParsed.data.pack_cost,
               calories_per_unit: ingParsed.data.calories_per_unit,
+              weight_per_unit_g: ingParsed.data.weight_per_unit_g ?? null,
             })
             .eq('id', existing.id);
           if (upErr) return err(upErr.message);
@@ -318,6 +335,8 @@ export async function createRecipeWithIngredients(
               pack_size: ingParsed.data.pack_size,
               pack_cost: ingParsed.data.pack_cost,
               calories_per_unit: ingParsed.data.calories_per_unit,
+              weight_per_unit_g: ingParsed.data.weight_per_unit_g ?? null,
+              stock_quantity: 0,
             })
             .select('id')
             .single();
@@ -459,6 +478,16 @@ export async function logDayConsumption(
 
     if (insertErr) return err(insertErr.message);
 
+    // Decrement stock_quantity for each ingredient consumed (best-effort)
+    for (const logRow of logRows) {
+      await supabase.rpc('decrement_stock', {
+        p_ingredient_id: logRow.ingredient_id,
+        p_quantity: logRow.quantity_consumed,
+      }).then(({ error }) => {
+        if (error) console.warn(`Failed to decrement stock for ${logRow.ingredient_id}:`, error.message);
+      });
+    }
+
     revalidatePath('/insights');
     return ok({
       logsInserted: inserted?.length ?? 0,
@@ -586,6 +615,8 @@ const updateIngredientActionSchema = z.object({
   pack_size: z.coerce.number().positive('Pack size must be greater than 0').optional(),
   pack_cost: z.coerce.number().min(0, 'Pack cost must be >= 0').optional(),
   calories_per_unit: z.coerce.number().min(0, 'Calories must be >= 0').optional(),
+  weight_per_unit_g: z.coerce.number().positive().nullish(),
+  stock_quantity: z.coerce.number().min(0).optional(),
 });
 
 export async function updateIngredient(
@@ -596,6 +627,8 @@ export async function updateIngredient(
     pack_size?: number;
     pack_cost?: number;
     calories_per_unit?: number;
+    weight_per_unit_g?: number | null;
+    stock_quantity?: number;
   },
 ): Promise<ActionResult<Ingredient>> {
   const parsed = updateIngredientActionSchema.safeParse({ id, ...data });
@@ -660,13 +693,34 @@ export async function deleteIngredient(
 export async function createIngredient(
   input: {
     name: string;
-    unit: string;
-    pack_size: number;
+    unit: string;            // canonical unit ('g'|'ml'|'pcs') OR display unit ('kg','L',etc.)
+    pack_size: number;       // in the unit provided above
     pack_cost: number;
     calories_per_unit?: number;
+    weight_per_unit_g?: number | null;
+    stock_quantity?: number;
   },
 ): Promise<ActionResult<Ingredient>> {
-  const parsed = createIngredientSchema.safeParse(input);
+  // Normalize to canonical base unit
+  let canonicalUnit = input.unit;
+  let canonicalPackSize = input.pack_size;
+  try {
+    const normalized = toBaseUnit(input.pack_size, input.unit);
+    canonicalUnit = normalized.unit;
+    canonicalPackSize = normalized.value;
+  } catch {
+    // If unit is already canonical or unknown, leave as-is; validator will catch bad values
+  }
+
+  const parsed = createIngredientSchema.safeParse({
+    name: input.name,
+    unit: canonicalUnit,
+    pack_size: canonicalPackSize,
+    pack_cost: input.pack_cost,
+    calories_per_unit: input.calories_per_unit ?? 0,
+    weight_per_unit_g: input.weight_per_unit_g,
+    stock_quantity: input.stock_quantity ?? 0,
+  });
   if (!parsed.success) return zodErr(parsed.error);
 
   try {
@@ -680,6 +734,8 @@ export async function createIngredient(
         pack_size: parsed.data.pack_size,
         pack_cost: parsed.data.pack_cost,
         calories_per_unit: parsed.data.calories_per_unit ?? 0,
+        weight_per_unit_g: parsed.data.weight_per_unit_g ?? null,
+        stock_quantity: parsed.data.stock_quantity ?? 0,
       })
       .select()
       .single();

@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  DollarSign,
+  IndianRupee,
   TrendingUp,
   Flame,
   CalendarCheck2,
@@ -40,7 +40,7 @@ export function SummaryKpiCards({ data }: SummaryKpiCardsProps) {
             MTD Spend
           </span>
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F7F2E7] text-[#7A7463] border border-[#C8BFA8] shadow-xs">
-            <DollarSign className="h-4 w-4" strokeWidth={2} />
+            <IndianRupee className="h-4 w-4" strokeWidth={2} />
           </div>
         </div>
         <div className="mt-3">

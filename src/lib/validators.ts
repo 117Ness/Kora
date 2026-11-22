@@ -13,6 +13,14 @@ export const createIngredientSchema = z.object({
     .number()
     .min(0, 'Calories per unit must be 0 or greater')
     .default(0),
+  weight_per_unit_g: z.coerce
+    .number()
+    .positive('weight_per_unit_g must be > 0')
+    .nullish(),
+  stock_quantity: z.coerce
+    .number()
+    .min(0, 'stock_quantity must be >= 0')
+    .default(0),
 });
 
 export const updateIngredientSchema = createIngredientSchema.partial();

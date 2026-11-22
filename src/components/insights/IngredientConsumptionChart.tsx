@@ -122,7 +122,7 @@ export function IngredientConsumptionChart({
                     : 'text-[#7D7765] hover:text-[#3E3C32]'
                 }`}
               >
-                By Cost ($)
+                By Cost (₹)
               </button>
               <button
                 type="button"
@@ -169,7 +169,7 @@ export function IngredientConsumptionChart({
                   stroke="#7D7765"
                   fontSize={11}
                   tickFormatter={(val) =>
-                    metric === 'cost' ? `$${val}` : `${val}`
+                    metric === 'cost' ? `₹${val}` : `${val}`
                   }
                 />
                 <YAxis
@@ -240,7 +240,7 @@ export function IngredientConsumptionChart({
                 <YAxis
                   stroke="#7D7765"
                   fontSize={11}
-                  tickFormatter={(val) => `$${val}`}
+                  tickFormatter={(val) => `₹${val}`}
                   width={55}
                 />
                 <Tooltip
@@ -277,7 +277,7 @@ export function IngredientConsumptionChart({
                   strokeWidth={2.5}
                   dot={{ r: 4, fill: '#7A7463', stroke: '#F7F2E7', strokeWidth: 2 }}
                   activeDot={{ r: 6, fill: '#7A7463' }}
-                  name="Daily Burn ($)"
+                  name="Daily Burn (₹)"
                 />
               </LineChart>
             </ResponsiveContainer>

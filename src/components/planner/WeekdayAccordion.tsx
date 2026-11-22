@@ -1,6 +1,6 @@
 'use client';
 
-import { Calendar, DollarSign, Flame, Utensils } from 'lucide-react';
+import { Calendar, IndianRupee, Flame, Utensils } from 'lucide-react';
 import type { DayPlanWithRecipe } from '@/types/kora';
 import {
   DAYS_OF_WEEK,
@@ -109,7 +109,7 @@ export function WeekdayAccordion({
                 <div className="mt-4 pt-3 border-t border-[#C8BFA8]/70 w-full space-y-2">
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="flex items-center gap-1.5 rounded-xl bg-[#F7F2E7] border border-[#C8BFA8]/80 px-2.5 py-1.5 shadow-xs">
-                      <DollarSign className="h-3.5 w-3.5 text-[#7A7463]" strokeWidth={2} />
+                      <IndianRupee className="h-3.5 w-3.5 text-[#7A7463]" strokeWidth={2} />
                       <div className="flex flex-col">
                         <span className="text-[10px] text-[#7D7765] uppercase tracking-wider font-semibold">
                           Burn

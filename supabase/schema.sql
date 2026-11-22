@@ -1,6 +1,7 @@
 -- =============================================================
 -- Kora – kitchen cost & nutrition planner
--- Schema migration v1 (personal single-user)
+-- Schema migration v2 (personal single-user)
+-- v2 adds: weight_per_unit_g, stock_quantity, canonical unit CHECK
 -- =============================================================
 
 -- 0. Extensions
@@ -11,13 +12,15 @@ create extension if not exists "pgcrypto";   -- gen_random_uuid()
 -- 1. ingredients
 -- -------------------------------------------------------------
 create table ingredients (
-  id             uuid        primary key default gen_random_uuid(),
-  name           text        not null unique,
-  unit           text        not null,            -- e.g. 'g', 'ml', 'pcs'
-  pack_size      numeric     not null check (pack_size > 0),
-  pack_cost      numeric     not null check (pack_cost >= 0),
-  calories_per_unit numeric  not null default 0 check (calories_per_unit >= 0),
-  created_at     timestamptz not null default now()
+  id                uuid          primary key default gen_random_uuid(),
+  name              text          not null unique,
+  unit              text          not null check (unit in ('g','ml','pcs')),
+  pack_size         numeric(12,3) not null check (pack_size > 0),
+  pack_cost         numeric(10,2) not null check (pack_cost >= 0),
+  calories_per_unit numeric(10,4) not null default 0 check (calories_per_unit >= 0),
+  weight_per_unit_g numeric(10,3) null,        -- g per piece; non-null for pcs items (egg=50, onion=80)
+  stock_quantity    numeric(12,3) not null default 0, -- current pantry stock in canonical unit
+  created_at        timestamptz   not null default now()
 );
 
 
@@ -66,6 +69,21 @@ create table consumption_logs (
   computed_cost      numeric     not null default 0 check (computed_cost >= 0),
   health_score       numeric              check (health_score between 0 and 100)
 );
+
+
+-- =============================================================
+-- Functions
+-- =============================================================
+
+-- Atomically decrement ingredient stock (floors at 0)
+create or replace function decrement_stock(p_ingredient_id uuid, p_quantity numeric)
+returns void
+language sql
+as $$
+  update ingredients
+  set stock_quantity = greatest(0, stock_quantity - p_quantity)
+  where id = p_ingredient_id;
+$$;
 
 
 -- =============================================================

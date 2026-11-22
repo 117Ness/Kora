@@ -11,6 +11,7 @@ import type {
   Ingredient,
   RecipeWithIngredients,
 } from '@/types/kora';
+import { formatINR } from '@/lib/units';
 
 // =============================================================
 // 1. Date & Month Boundaries
@@ -109,7 +110,6 @@ export function computeIngredientConsumption(
   );
 
   // ---- Daily series ----
-  // key: `${date}|${ingredientId}`
   const dailyMap = new Map<string, DailyIngredientPoint>();
   // ---- Cumulative totals ----
   const cumulMap = new Map<string, CumulativeIngredient>();
@@ -187,7 +187,6 @@ export function computeHealthTrends(
     (l) => l.log_date >= monthStart && l.log_date <= today,
   );
 
-  // key: date
   const dayAcc = new Map<
     string,
     { calories: number; healthScores: number[]; count: number }
@@ -247,6 +246,11 @@ export interface BudgetSummary {
   projectedMonthlyCost: number;
   /** Scheduled weekly average cost from day_plans (7-day) */
   scheduledWeeklyAvgCost: number;
+  // INR formatted strings for display
+  spentSoFarFormatted: string;
+  avgDailyBurnFormatted: string;
+  projectedMonthlyCostFormatted: string;
+  scheduledWeeklyAvgCostFormatted: string;
 }
 
 export interface IngredientProjection {
@@ -261,6 +265,8 @@ export interface IngredientProjection {
   projectedMonthlyQuantity: number;
   /** Projected total cost for the full month */
   projectedMonthlyCost: number;
+  /** Formatted INR projected monthly cost */
+  projectedMonthlyCostFormatted: string;
 }
 
 /**
@@ -339,6 +345,10 @@ export function computeBudgetSummary(
     avgDailyBurn: parseFloat(avgDailyBurn.toFixed(4)),
     projectedMonthlyCost: parseFloat(projectedMonthlyCost.toFixed(2)),
     scheduledWeeklyAvgCost: parseFloat(scheduledWeeklyAvgCost.toFixed(2)),
+    spentSoFarFormatted: formatINR(spentSoFar),
+    avgDailyBurnFormatted: formatINR(avgDailyBurn),
+    projectedMonthlyCostFormatted: formatINR(projectedMonthlyCost),
+    scheduledWeeklyAvgCostFormatted: formatINR(scheduledWeeklyAvgCost),
   };
 }
 
@@ -385,6 +395,9 @@ export function computeIngredientProjections(
 
     const avgDailyUsage = acc.quantity / loggedDaysCount;
     const avgDailyCost = acc.cost / loggedDaysCount;
+    const projectedMonthlyCost = parseFloat(
+      (acc.cost + avgDailyCost * remainingDaysInMonth).toFixed(2),
+    );
 
     projections.push({
       ingredientId,
@@ -395,9 +408,8 @@ export function computeIngredientProjections(
       projectedMonthlyQuantity: parseFloat(
         (acc.quantity + avgDailyUsage * remainingDaysInMonth).toFixed(4),
       ),
-      projectedMonthlyCost: parseFloat(
-        (acc.cost + avgDailyCost * remainingDaysInMonth).toFixed(2),
-      ),
+      projectedMonthlyCost,
+      projectedMonthlyCostFormatted: formatINR(projectedMonthlyCost),
     });
   }
 

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import {
-  DollarSign,
+  IndianRupee,
   Flame,
   Pencil,
   Trash2,
@@ -133,7 +133,7 @@ export function RecipeCard({
       <div className="mt-4 grid grid-cols-2 gap-2.5 pt-3 border-t border-[#C8BFA8]/80">
         <div className="flex items-center gap-2 rounded-xl bg-[#F7F2E7] p-2.5 border border-[#C8BFA8] shadow-xs">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#EBE3D2] text-[#7A7463] border border-[#C8BFA8]">
-            <DollarSign className="h-3.5 w-3.5" strokeWidth={2} />
+            <IndianRupee className="h-3.5 w-3.5" strokeWidth={2} />
           </div>
           <div>
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-[#7D7765] font-sans">

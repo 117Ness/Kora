@@ -4,7 +4,7 @@ import { useState, useTransition, useMemo } from 'react';
 import {
   BookOpen,
   Plus,
-  DollarSign,
+  IndianRupee,
   Flame,
   Search,
   Check,
@@ -165,7 +165,7 @@ export function AvailableRecipes({
                   {/* Badges strip */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="inline-flex items-center gap-1 rounded-full bg-[#F7F2E7] border border-[#C8BFA8] px-2.5 py-0.5 text-xs font-semibold text-[#3E3C32] shadow-xs">
-                      <DollarSign className="h-3 w-3 text-[#7A7463]" strokeWidth={2} />
+                      <IndianRupee className="h-3 w-3 text-[#7A7463]" strokeWidth={2} />
                       <span className="font-serif">{formatCurrency(cost)}</span>
                     </span>
 

@@ -24,10 +24,12 @@ export type DayOfWeekName = (typeof DAYS_OF_WEEK)[number];
 export interface Ingredient {
   id: string;
   name: string;
-  unit: string; // e.g. 'g', 'ml', 'pcs'
+  unit: string; // canonical: 'g' | 'ml' | 'pcs'
   pack_size: number;
   pack_cost: number;
   calories_per_unit: number;
+  weight_per_unit_g: number | null;  // g per piece for pcs items; null for g/ml items
+  stock_quantity: number;             // current pantry stock in canonical unit
   created_at: string;
 }
 
@@ -95,6 +97,8 @@ export interface CreateIngredientInput {
   pack_size: number;
   pack_cost: number;
   calories_per_unit?: number;
+  weight_per_unit_g?: number | null;
+  stock_quantity?: number;
 }
 
 export type UpdateIngredientInput = Partial<CreateIngredientInput>;
@@ -143,6 +147,8 @@ export interface Database {
         Insert: Omit<Ingredient, 'id' | 'created_at'> & {
           id?: string;
           created_at?: string;
+          weight_per_unit_g?: number | null;
+          stock_quantity?: number;
         };
         Update: Partial<Omit<Ingredient, 'id' | 'created_at'>> & {
           id?: string;
