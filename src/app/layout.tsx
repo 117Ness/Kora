@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import { Playfair_Display, Plus_Jakarta_Sans } from 'next/font/google';
+import { Suspense } from 'react';
 import './globals.css';
 import { Navbar } from '@/components/Navbar';
+import { getUserProfile } from '@/app/actions/profile';
 
 const playfair = Playfair_Display({
   subsets: ['latin'],
@@ -24,6 +26,12 @@ export const metadata: Metadata = {
     'Sleek meal planning, recipe cost breakdowns, and nutritional intelligence in a warm editorial cookbook aesthetic.',
 };
 
+async function NavbarLoader() {
+  const res = await getUserProfile();
+  const initialProfile = res.success ? res.data : null;
+  return <Navbar initialProfile={initialProfile} />;
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -35,7 +43,9 @@ export default function RootLayout({
       className={`${playfair.variable} ${plusJakarta.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[#F3EDE0] text-[#3E3C32] font-sans selection:bg-[#7A7463]/25 selection:text-[#3E3C32]">
-        <Navbar />
+        <Suspense fallback={<Navbar />}>
+          <NavbarLoader />
+        </Suspense>
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {children}
         </main>
@@ -47,10 +57,10 @@ export default function RootLayout({
             <div className="flex items-center gap-3 text-xs text-[#7D7765]">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-[#C8BFA8] bg-[#EBE3D2] px-2.5 py-0.5 text-[11px] font-medium text-[#7D7765]">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#7A7463]" />
-                Personal Single-User v1
+                AI Chef &amp; Flat Living v1
               </span>
               <span>&bull;</span>
-              <span className="text-[#5B5646] font-medium">Local-first Ready</span>
+              <span className="text-[#5B5646] font-medium">Multi-User Ready</span>
             </div>
           </div>
         </footer>
