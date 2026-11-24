@@ -46,6 +46,7 @@ function zodErr(e: z.ZodError): ActionResult<never> {
 
 const RECIPE_SELECT = `
   id,
+  user_id,
   name,
   notes,
   created_at,
@@ -56,11 +57,15 @@ const RECIPE_SELECT = `
     quantity_used,
     ingredient:ingredients (
       id,
+      user_id,
       name,
       unit,
       pack_size,
       pack_cost,
       calories_per_unit,
+      protein_per_unit,
+      carbs_per_unit,
+      fats_per_unit,
       weight_per_unit_g,
       stock_quantity,
       created_at
@@ -70,6 +75,7 @@ const RECIPE_SELECT = `
 
 const DAY_PLAN_SELECT = `
   id,
+  user_id,
   day_of_week,
   recipe_id,
   servings,
@@ -91,17 +97,30 @@ export type PlannerData = {
 export async function getPlannerData(): Promise<ActionResult<PlannerData>> {
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    let dayPlansQuery = supabase
+      .from('day_plans')
+      .select(DAY_PLAN_SELECT)
+      .order('day_of_week', { ascending: true })
+      .order('sort_order', { ascending: true });
+
+    let recipesQuery = supabase
+      .from('recipes')
+      .select(RECIPE_SELECT)
+      .order('name', { ascending: true });
+
+    if (user) {
+      dayPlansQuery = dayPlansQuery.or(`user_id.eq.${user.id},user_id.is.null`);
+      recipesQuery = recipesQuery.or(`user_id.eq.${user.id},user_id.is.null`);
+    } else {
+      dayPlansQuery = dayPlansQuery.is('user_id', null);
+      recipesQuery = recipesQuery.is('user_id', null);
+    }
 
     const [dayPlansRes, recipesRes] = await Promise.all([
-      supabase
-        .from('day_plans')
-        .select(DAY_PLAN_SELECT)
-        .order('day_of_week', { ascending: true })
-        .order('sort_order', { ascending: true }),
-      supabase
-        .from('recipes')
-        .select(RECIPE_SELECT)
-        .order('name', { ascending: true }),
+      dayPlansQuery,
+      recipesQuery,
     ]);
 
     if (dayPlansRes.error) return err(dayPlansRes.error.message);
@@ -142,19 +161,26 @@ export async function addRecipeToDay(
 
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id ?? null;
 
-    // Check if the (day_of_week, recipe_id) pair already exists
-    const { data: existing, error: fetchErr } = await supabase
+    // Check if the (day_of_week, recipe_id) pair already exists for this user/guest
+    let existingQuery = supabase
       .from('day_plans')
       .select('id, servings')
       .eq('day_of_week', day_of_week)
-      .eq('recipe_id', recipe_id)
-      .maybeSingle();
+      .eq('recipe_id', recipe_id);
 
+    if (userId) {
+      existingQuery = existingQuery.eq('user_id', userId);
+    } else {
+      existingQuery = existingQuery.is('user_id', null);
+    }
+
+    const { data: existing, error: fetchErr } = await existingQuery.maybeSingle();
     if (fetchErr) return err(fetchErr.message);
 
     if (existing) {
-      // Increment servings on the existing plan
       const newServings = Number(existing.servings) + srvs;
       const { data, error } = await supabase
         .from('day_plans')
@@ -169,10 +195,18 @@ export async function addRecipeToDay(
     }
 
     // Determine sort_order: max(sort_order) + 1 for that day
-    const { data: maxRow } = await supabase
+    let maxQuery = supabase
       .from('day_plans')
       .select('sort_order')
-      .eq('day_of_week', day_of_week)
+      .eq('day_of_week', day_of_week);
+
+    if (userId) {
+      maxQuery = maxQuery.eq('user_id', userId);
+    } else {
+      maxQuery = maxQuery.is('user_id', null);
+    }
+
+    const { data: maxRow } = await maxQuery
       .order('sort_order', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -181,7 +215,13 @@ export async function addRecipeToDay(
 
     const { data, error } = await supabase
       .from('day_plans')
-      .insert({ day_of_week, recipe_id, servings: srvs, sort_order })
+      .insert({
+        user_id: userId,
+        day_of_week,
+        recipe_id,
+        servings: srvs,
+        sort_order,
+      })
       .select()
       .single();
 
@@ -205,13 +245,22 @@ export async function removeRecipeFromDay(
 
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    const { error } = await supabase
+    let query = supabase
       .from('day_plans')
       .delete()
       .eq('id', parsed.data);
 
+    if (user) {
+      query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+    } else {
+      query = query.is('user_id', null);
+    }
+
+    const { error } = await query;
     if (error) return err(error.message);
+
     revalidatePath('/');
     return ok({ id: parsed.data });
   } catch (e) {
@@ -223,20 +272,21 @@ export async function removeRecipeFromDay(
 // 4. createRecipeWithIngredients
 // =============================================================
 
-// Extended schema: ingredients with full ingredient data (not just UUID)
 const createRecipeFullSchema = z.object({
   name: z.string().trim().min(1, 'Recipe name is required'),
   notes: z.string().trim().nullish(),
   ingredients: z
     .array(
       z.object({
-        // Supply either an existing ingredient UUID or the data to create/upsert one
         ingredient_id: z.string().uuid().optional(),
         name: z.string().trim().min(1, 'Ingredient name is required').optional(),
         unit: z.string().trim().min(1, 'Unit is required').optional(),
         pack_size: z.coerce.number().positive().optional(),
         pack_cost: z.coerce.number().min(0).optional(),
         calories_per_unit: z.coerce.number().min(0).optional(),
+        protein_per_unit: z.coerce.number().min(0).optional(),
+        carbs_per_unit: z.coerce.number().min(0).optional(),
+        fats_per_unit: z.coerce.number().min(0).optional(),
         weight_per_unit_g: z.coerce.number().positive().nullish(),
         quantity_used: z.coerce.number().positive('Quantity used must be > 0'),
       }),
@@ -255,11 +305,17 @@ export async function createRecipeWithIngredients(
 
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id ?? null;
 
     // 1. Insert the recipe
     const { data: recipe, error: recipeErr } = await supabase
       .from('recipes')
-      .insert({ name, notes: notes ?? null })
+      .insert({
+        user_id: userId,
+        name,
+        notes: notes ?? null,
+      })
       .select()
       .single();
 
@@ -278,7 +334,6 @@ export async function createRecipeWithIngredients(
       let ingredientId = ing.ingredient_id;
 
       if (!ingredientId) {
-        // Normalize pack_size/unit to canonical base
         let canonicalUnit = ing.unit ?? 'g';
         let canonicalPackSize = ing.pack_size ?? 1;
         try {
@@ -287,59 +342,79 @@ export async function createRecipeWithIngredients(
             canonicalUnit = normalized.unit;
             canonicalPackSize = normalized.value;
           }
-        } catch { /* unknown unit, leave as-is */ }
+        } catch { /* canonical fallback */ }
 
-        // Must have enough data to create/upsert
         const ingParsed = createIngredientSchema.safeParse({
           name: ing.name,
           unit: canonicalUnit,
           pack_size: canonicalPackSize,
           pack_cost: ing.pack_cost,
           calories_per_unit: ing.calories_per_unit ?? 0,
+          protein_per_unit: ing.protein_per_unit ?? 0,
+          carbs_per_unit: ing.carbs_per_unit ?? 0,
+          fats_per_unit: ing.fats_per_unit ?? 0,
           weight_per_unit_g: ing.weight_per_unit_g ?? null,
         });
         if (!ingParsed.success) return zodErr(ingParsed.error);
 
         const normalizedName = ingParsed.data.name.toLowerCase().trim();
 
-        // Try to find existing ingredient by normalised name
-        const { data: existing, error: findErr } = await supabase
+        let findQuery = supabase
           .from('ingredients')
           .select('id')
-          .ilike('name', normalizedName)
-          .maybeSingle();
+          .ilike('name', normalizedName);
 
+        if (userId) {
+          findQuery = findQuery.or(`user_id.eq.${userId},user_id.is.null`);
+        } else {
+          findQuery = findQuery.is('user_id', null);
+        }
+
+        const { data: existing, error: findErr } = await findQuery.maybeSingle();
         if (findErr) return err(findErr.message);
 
         if (existing) {
-          // Update pack info if changed
-          const { error: upErr } = await supabase
+          // Update details if owned
+          let upQuery = supabase
             .from('ingredients')
             .update({
               unit: ingParsed.data.unit,
               pack_size: ingParsed.data.pack_size,
               pack_cost: ingParsed.data.pack_cost,
               calories_per_unit: ingParsed.data.calories_per_unit,
+              protein_per_unit: ingParsed.data.protein_per_unit,
+              carbs_per_unit: ingParsed.data.carbs_per_unit,
+              fats_per_unit: ingParsed.data.fats_per_unit,
               weight_per_unit_g: ingParsed.data.weight_per_unit_g ?? null,
             })
             .eq('id', existing.id);
-          if (upErr) return err(upErr.message);
+
+          if (userId) {
+            upQuery = upQuery.eq('user_id', userId);
+          } else {
+            upQuery = upQuery.is('user_id', null);
+          }
+          await upQuery; // best-effort
           ingredientId = existing.id;
         } else {
-          // Create new ingredient
           const { data: newIng, error: createErr } = await supabase
             .from('ingredients')
             .insert({
+              user_id: userId,
               name: ingParsed.data.name,
               unit: ingParsed.data.unit,
               pack_size: ingParsed.data.pack_size,
               pack_cost: ingParsed.data.pack_cost,
               calories_per_unit: ingParsed.data.calories_per_unit,
+              protein_per_unit: ingParsed.data.protein_per_unit,
+              carbs_per_unit: ingParsed.data.carbs_per_unit,
+              fats_per_unit: ingParsed.data.fats_per_unit,
               weight_per_unit_g: ingParsed.data.weight_per_unit_g ?? null,
               stock_quantity: 0,
             })
             .select('id')
             .single();
+
           if (createErr) return err(createErr.message);
           ingredientId = newIng.id as string;
         }
@@ -417,20 +492,28 @@ export async function logDayConsumption(
 
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id ?? null;
 
-    // Fetch all day_plans for this day, joined with recipe_ingredients and ingredients
-    const { data: plans, error: plansErr } = await supabase
+    let plansQuery = supabase
       .from('day_plans')
       .select(DAY_PLAN_SELECT)
       .eq('day_of_week', day_of_week);
 
+    if (userId) {
+      plansQuery = plansQuery.or(`user_id.eq.${userId},user_id.is.null`);
+    } else {
+      plansQuery = plansQuery.is('user_id', null);
+    }
+
+    const { data: plans, error: plansErr } = await plansQuery;
     if (plansErr) return err(plansErr.message);
     if (!plans || plans.length === 0) {
       return ok({ logsInserted: 0, logs: [] });
     }
 
-    // Build consumption log rows
     const logRows: {
+      user_id: string | null;
       log_date: string;
       ingredient_id: string;
       quantity_consumed: number;
@@ -440,7 +523,6 @@ export async function logDayConsumption(
 
     for (const plan of plans) {
       const servings = Number(plan.servings);
-      // recipe_ingredients come back nested under plan.recipe.recipe_ingredients
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const recipeIngredients: any[] =
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -458,6 +540,7 @@ export async function logDayConsumption(
         );
 
         logRows.push({
+          user_id: userId,
           log_date,
           ingredient_id: ing.id,
           quantity_consumed,
@@ -478,7 +561,7 @@ export async function logDayConsumption(
 
     if (insertErr) return err(insertErr.message);
 
-    // Decrement stock_quantity for each ingredient consumed (best-effort)
+    // Decrement stock_quantity
     for (const logRow of logRows) {
       await supabase.rpc('decrement_stock', {
         p_ingredient_id: logRow.ingredient_id,
@@ -510,16 +593,29 @@ export type LibraryData = {
 export async function getLibraryData(): Promise<ActionResult<LibraryData>> {
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    let recipesQuery = supabase
+      .from('recipes')
+      .select(RECIPE_SELECT)
+      .order('name', { ascending: true });
+
+    let ingredientsQuery = supabase
+      .from('ingredients')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (user) {
+      recipesQuery = recipesQuery.or(`user_id.eq.${user.id},user_id.is.null`);
+      ingredientsQuery = ingredientsQuery.or(`user_id.eq.${user.id},user_id.is.null`);
+    } else {
+      recipesQuery = recipesQuery.is('user_id', null);
+      ingredientsQuery = ingredientsQuery.is('user_id', null);
+    }
 
     const [recipesRes, ingredientsRes] = await Promise.all([
-      supabase
-        .from('recipes')
-        .select(RECIPE_SELECT)
-        .order('name', { ascending: true }),
-      supabase
-        .from('ingredients')
-        .select('*')
-        .order('name', { ascending: true }),
+      recipesQuery,
+      ingredientsQuery,
     ]);
 
     if (recipesRes.error) return err(recipesRes.error.message);
@@ -553,14 +649,23 @@ export async function updateRecipe(
 
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    const { data: updated, error: updateErr } = await supabase
+    let query = supabase
       .from('recipes')
       .update({
         name: parsed.data.name,
         notes: parsed.data.notes ?? null,
       })
-      .eq('id', parsed.data.id)
+      .eq('id', parsed.data.id);
+
+    if (user) {
+      query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+    } else {
+      query = query.is('user_id', null);
+    }
+
+    const { data: updated, error: updateErr } = await query
       .select()
       .single();
 
@@ -587,12 +692,20 @@ export async function deleteRecipe(
 
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    const { error: delErr } = await supabase
+    let query = supabase
       .from('recipes')
       .delete()
       .eq('id', parsed.data);
 
+    if (user) {
+      query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+    } else {
+      query = query.is('user_id', null);
+    }
+
+    const { error: delErr } = await query;
     if (delErr) return err(delErr.message);
 
     revalidatePath('/library');
@@ -615,6 +728,9 @@ const updateIngredientActionSchema = z.object({
   pack_size: z.coerce.number().positive('Pack size must be greater than 0').optional(),
   pack_cost: z.coerce.number().min(0, 'Pack cost must be >= 0').optional(),
   calories_per_unit: z.coerce.number().min(0, 'Calories must be >= 0').optional(),
+  protein_per_unit: z.coerce.number().min(0, 'Protein must be >= 0').optional(),
+  carbs_per_unit: z.coerce.number().min(0, 'Carbs must be >= 0').optional(),
+  fats_per_unit: z.coerce.number().min(0, 'Fats must be >= 0').optional(),
   weight_per_unit_g: z.coerce.number().positive().nullish(),
   stock_quantity: z.coerce.number().min(0).optional(),
 });
@@ -627,6 +743,9 @@ export async function updateIngredient(
     pack_size?: number;
     pack_cost?: number;
     calories_per_unit?: number;
+    protein_per_unit?: number;
+    carbs_per_unit?: number;
+    fats_per_unit?: number;
     weight_per_unit_g?: number | null;
     stock_quantity?: number;
   },
@@ -638,11 +757,20 @@ export async function updateIngredient(
 
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    const { data: updated, error: updateErr } = await supabase
+    let query = supabase
       .from('ingredients')
       .update(updateFields)
-      .eq('id', ingId)
+      .eq('id', ingId);
+
+    if (user) {
+      query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+    } else {
+      query = query.is('user_id', null);
+    }
+
+    const { data: updated, error: updateErr } = await query
       .select()
       .single();
 
@@ -669,12 +797,20 @@ export async function deleteIngredient(
 
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    const { error: delErr } = await supabase
+    let query = supabase
       .from('ingredients')
       .delete()
       .eq('id', parsed.data);
 
+    if (user) {
+      query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+    } else {
+      query = query.is('user_id', null);
+    }
+
+    const { error: delErr } = await query;
     if (delErr) return err(delErr.message);
 
     revalidatePath('/library');
@@ -693,15 +829,17 @@ export async function deleteIngredient(
 export async function createIngredient(
   input: {
     name: string;
-    unit: string;            // canonical unit ('g'|'ml'|'pcs') OR display unit ('kg','L',etc.)
-    pack_size: number;       // in the unit provided above
+    unit: string;
+    pack_size: number;
     pack_cost: number;
     calories_per_unit?: number;
+    protein_per_unit?: number;
+    carbs_per_unit?: number;
+    fats_per_unit?: number;
     weight_per_unit_g?: number | null;
     stock_quantity?: number;
   },
 ): Promise<ActionResult<Ingredient>> {
-  // Normalize to canonical base unit
   let canonicalUnit = input.unit;
   let canonicalPackSize = input.pack_size;
   try {
@@ -709,7 +847,7 @@ export async function createIngredient(
     canonicalUnit = normalized.unit;
     canonicalPackSize = normalized.value;
   } catch {
-    // If unit is already canonical or unknown, leave as-is; validator will catch bad values
+    // leave as-is
   }
 
   const parsed = createIngredientSchema.safeParse({
@@ -718,6 +856,9 @@ export async function createIngredient(
     pack_size: canonicalPackSize,
     pack_cost: input.pack_cost,
     calories_per_unit: input.calories_per_unit ?? 0,
+    protein_per_unit: input.protein_per_unit ?? 0,
+    carbs_per_unit: input.carbs_per_unit ?? 0,
+    fats_per_unit: input.fats_per_unit ?? 0,
     weight_per_unit_g: input.weight_per_unit_g,
     stock_quantity: input.stock_quantity ?? 0,
   });
@@ -725,15 +866,21 @@ export async function createIngredient(
 
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id ?? null;
 
     const { data: created, error: createErr } = await supabase
       .from('ingredients')
       .insert({
+        user_id: userId,
         name: parsed.data.name,
         unit: parsed.data.unit,
         pack_size: parsed.data.pack_size,
         pack_cost: parsed.data.pack_cost,
         calories_per_unit: parsed.data.calories_per_unit ?? 0,
+        protein_per_unit: parsed.data.protein_per_unit ?? 0,
+        carbs_per_unit: parsed.data.carbs_per_unit ?? 0,
+        fats_per_unit: parsed.data.fats_per_unit ?? 0,
         weight_per_unit_g: parsed.data.weight_per_unit_g ?? null,
         stock_quantity: parsed.data.stock_quantity ?? 0,
       })
@@ -760,21 +907,38 @@ export type InsightsData = InsightsAnalytics;
 export async function getInsightsData(): Promise<ActionResult<InsightsAnalytics>> {
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    let logsQuery = supabase
+      .from('consumption_logs')
+      .select('*')
+      .order('log_date', { ascending: true });
+
+    let ingredientsQuery = supabase
+      .from('ingredients')
+      .select('*')
+      .order('name', { ascending: true });
+
+    let dayPlansQuery = supabase
+      .from('day_plans')
+      .select(DAY_PLAN_SELECT)
+      .order('day_of_week', { ascending: true })
+      .order('sort_order', { ascending: true });
+
+    if (user) {
+      logsQuery = logsQuery.or(`user_id.eq.${user.id},user_id.is.null`);
+      ingredientsQuery = ingredientsQuery.or(`user_id.eq.${user.id},user_id.is.null`);
+      dayPlansQuery = dayPlansQuery.or(`user_id.eq.${user.id},user_id.is.null`);
+    } else {
+      logsQuery = logsQuery.is('user_id', null);
+      ingredientsQuery = ingredientsQuery.is('user_id', null);
+      dayPlansQuery = dayPlansQuery.is('user_id', null);
+    }
 
     const [logsRes, ingredientsRes, dayPlansRes] = await Promise.all([
-      supabase
-        .from('consumption_logs')
-        .select('*')
-        .order('log_date', { ascending: true }),
-      supabase
-        .from('ingredients')
-        .select('*')
-        .order('name', { ascending: true }),
-      supabase
-        .from('day_plans')
-        .select(DAY_PLAN_SELECT)
-        .order('day_of_week', { ascending: true })
-        .order('sort_order', { ascending: true }),
+      logsQuery,
+      ingredientsQuery,
+      dayPlansQuery,
     ]);
 
     if (logsRes.error) return err(logsRes.error.message);

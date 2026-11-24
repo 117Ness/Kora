@@ -1,6 +1,47 @@
 import { z } from 'zod';
 
 // =============================================================
+// User Profile Validators
+// =============================================================
+
+export const userProfileSchema = z.object({
+  display_name: z.string().trim().nullish(),
+  daily_calorie_target: z.coerce
+    .number()
+    .int('Daily calorie target must be an integer')
+    .min(500, 'Daily calorie target must be at least 500')
+    .max(10000, 'Daily calorie target cannot exceed 10000')
+    .default(2200),
+  protein_target_g: z.coerce
+    .number()
+    .int('Protein target must be an integer')
+    .min(0, 'Protein target must be 0 or greater')
+    .max(1000, 'Protein target cannot exceed 1000g')
+    .default(100),
+  carbs_target_g: z.coerce
+    .number()
+    .int('Carbs target must be an integer')
+    .min(0, 'Carbs target must be 0 or greater')
+    .max(1000, 'Carbs target cannot exceed 1000g')
+    .default(250),
+  fats_target_g: z.coerce
+    .number()
+    .int('Fats target must be an integer')
+    .min(0, 'Fats target must be 0 or greater')
+    .max(500, 'Fats target cannot exceed 500g')
+    .default(70),
+  micro_goals: z.array(z.string().trim()).default([]),
+  cookware: z
+    .array(z.string().trim())
+    .default(['Induction Cooktop', 'Non-Stick Pan', 'Pressure Cooker']),
+  dietary_preferences: z.string().trim().nullish(),
+});
+
+export const updateUserProfileSchema = userProfileSchema.partial();
+export type UserProfileData = z.infer<typeof userProfileSchema>;
+export type UpdateUserProfileData = z.infer<typeof updateUserProfileSchema>;
+
+// =============================================================
 // Ingredient Validators
 // =============================================================
 
@@ -13,6 +54,18 @@ export const createIngredientSchema = z.object({
     .number()
     .min(0, 'Calories per unit must be 0 or greater')
     .default(0),
+  protein_per_unit: z.coerce
+    .number()
+    .min(0, 'Protein per unit must be 0 or greater')
+    .default(0),
+  carbs_per_unit: z.coerce
+    .number()
+    .min(0, 'Carbs per unit must be 0 or greater')
+    .default(0),
+  fats_per_unit: z.coerce
+    .number()
+    .min(0, 'Fats per unit must be 0 or greater')
+    .default(0),
   weight_per_unit_g: z.coerce
     .number()
     .positive('weight_per_unit_g must be > 0')
@@ -24,7 +77,6 @@ export const createIngredientSchema = z.object({
 });
 
 export const updateIngredientSchema = createIngredientSchema.partial();
-
 export const ingredientSchema = createIngredientSchema;
 
 export type CreateIngredientData = z.infer<typeof createIngredientSchema>;
@@ -54,7 +106,6 @@ export const createRecipeSchema = z.object({
 });
 
 export const updateRecipeSchema = createRecipeSchema.partial();
-
 export const recipeSchema = createRecipeSchema;
 
 export type RecipeIngredientInputData = z.infer<typeof recipeIngredientInputSchema>;
@@ -79,7 +130,6 @@ export const createDayPlanSchema = z.object({
 });
 
 export const updateDayPlanSchema = createDayPlanSchema.partial();
-
 export const dayPlanSchema = createDayPlanSchema;
 
 export type CreateDayPlanData = z.infer<typeof createDayPlanSchema>;
@@ -110,7 +160,6 @@ export const createConsumptionLogSchema = z.object({
 });
 
 export const updateConsumptionLogSchema = createConsumptionLogSchema.partial();
-
 export const consumptionLogSchema = createConsumptionLogSchema;
 
 export type CreateConsumptionLogData = z.infer<typeof createConsumptionLogSchema>;
