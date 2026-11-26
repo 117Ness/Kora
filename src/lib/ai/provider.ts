@@ -11,9 +11,9 @@ export const googleProvider = createGoogleGenerativeAI({
 
 /**
  * Returns the configured Gemini LanguageModel instance for Vercel AI SDK.
- * Defaults to 'gemini-2.5-flash' or adheres to process.env.GEMINI_MODEL.
+ * Defaults to 'gemini-3.8-flash' or adheres to process.env.GEMINI_MODEL.
  */
 export function getAIModel() {
-  const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const modelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
   return googleProvider(modelName);
 }
