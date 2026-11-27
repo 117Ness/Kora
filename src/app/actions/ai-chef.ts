@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import type {
   AcceptProposedRecipeOptions,
@@ -15,6 +16,32 @@ type ActionResult<T = undefined> =
   | { success: true; data: T }
   | { success: false; error: string };
 
+const proposedIngredientSchema = z.object({
+  name: z.string().trim().min(1, 'Ingredient name is required'),
+  quantity: z.coerce.number().positive('Ingredient quantity must be > 0'),
+  unit: z.enum(['g', 'ml', 'pcs']).optional().default('g'),
+  weight_per_unit_g: z.coerce.number().positive().nullish(),
+  estimated_cost_inr: z.coerce.number().min(0).optional().default(0),
+  calories: z.coerce.number().min(0).optional().default(0),
+  protein_g: z.coerce.number().min(0).optional().default(0),
+  carbs_g: z.coerce.number().min(0).optional().default(0),
+  fats_g: z.coerce.number().min(0).optional().default(0),
+});
+
+const acceptOptionsSchema = z
+  .object({
+    addToDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'addToDate must be YYYY-MM-DD')
+      .optional(),
+    replaceRecipeId: z.string().uuid('Invalid replaceRecipeId').optional(),
+  })
+  .optional();
+
+function escapeIlikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 function parseDayOfWeek(dateStr: string): number {
   const parts = dateStr.split('-');
   if (parts.length === 3) {
@@ -28,6 +55,7 @@ function parseDayOfWeek(dateStr: string): number {
 
 /**
  * Commits an AI-generated recipe proposal (or scaled recipe / plan meal) directly into Supabase.
+ * - Requires an authenticated user so personal pantry/recipes/schedules are strictly isolated
  * - Resolves or creates missing canonical ingredients
  * - Persists recipe and recipe_ingredients
  * - Optionally schedules onto day_plans if addToDate is provided
@@ -36,36 +64,74 @@ export async function acceptProposedRecipe(
   proposal: ProposedRecipePayload | ScaledRecipePayload | Record<string, unknown>,
   options?: AcceptProposedRecipeOptions
 ): Promise<ActionResult<AcceptProposedRecipeResult>> {
+  const parsedOptions = acceptOptionsSchema.safeParse(options);
+  if (!parsedOptions.success) {
+    return {
+      success: false,
+      error: parsedOptions.error.issues.map((i) => i.message).join('; '),
+    };
+  }
+
   try {
     const supabase = await createClient();
     const {
       data: { user },
+      error: authErr,
     } = await supabase.auth.getUser();
-    const userId = user?.id ?? null;
 
-    // 1. Normalize proposal fields
+    if (authErr || !user) {
+      return {
+        success: false,
+        error: 'Please sign in (via Kitchen & Goals) to save recipes to your kitchen.',
+      };
+    }
+
+    // 1. Normalize & validate proposal fields
     const recipeName = (
       (proposal as ProposedRecipePayload).name ||
       (proposal as ScaledRecipePayload).recipe_title ||
       'AI Curated Recipe'
     ).trim();
 
-    const rawIngredients: ProposedRecipeIngredient[] =
+    const rawIngredientsInput =
       (proposal as ProposedRecipePayload).ingredients ||
       (proposal as ScaledRecipePayload).scaled_ingredients ||
       [];
 
-    if (!rawIngredients || rawIngredients.length === 0) {
-      return { success: false, error: 'Recipe proposal contains no ingredients' };
+    const parsedIngredients = z
+      .array(proposedIngredientSchema)
+      .min(1, 'Recipe proposal contains no valid ingredients')
+      .safeParse(rawIngredientsInput);
+
+    if (!parsedIngredients.success) {
+      return {
+        success: false,
+        error: parsedIngredients.error.issues.map((i) => i.message).join('; '),
+      };
     }
 
-    const instructions: string[] =
-      (proposal as ProposedRecipePayload).instructions ||
-      (proposal as ScaledRecipePayload).updated_instructions ||
-      [];
+    const rawIngredients: ProposedRecipeIngredient[] = parsedIngredients.data;
 
-    const description: string = (proposal as ProposedRecipePayload).description || '';
-    const cookwareNeeded: string[] = (proposal as ProposedRecipePayload).cookware_needed || [];
+    const instructions: string[] = Array.isArray(
+      (proposal as ProposedRecipePayload).instructions ||
+        (proposal as ScaledRecipePayload).updated_instructions
+    )
+      ? (
+          (proposal as ProposedRecipePayload).instructions ||
+          (proposal as ScaledRecipePayload).updated_instructions ||
+          []
+        ).map(String)
+      : [];
+
+    const description: string =
+      typeof (proposal as ProposedRecipePayload).description === 'string'
+        ? (proposal as ProposedRecipePayload).description
+        : '';
+    const cookwareNeeded: string[] = Array.isArray(
+      (proposal as ProposedRecipePayload).cookware_needed
+    )
+      ? (proposal as ProposedRecipePayload).cookware_needed.map(String)
+      : [];
 
     const notesParts: string[] = [];
     if (description) notesParts.push(description);
@@ -80,26 +146,26 @@ export async function acceptProposedRecipe(
     }
     const notes = notesParts.join('\n\n');
 
-    // 2. Resolve / Create Ingredients
+    // 2. Resolve / Create Ingredients strictly scoped to user.id (or read-only public templates)
     const resolvedIngredients: { ingredientId: string; quantity: number }[] = [];
 
     for (const ing of rawIngredients) {
       const ingName = ing.name.trim();
+      const escapedIngName = escapeIlikePattern(ingName);
       const canonicalUnit: CanonicalUnit =
-        ing.unit === 'g' || ing.unit === 'ml' || ing.unit === 'pcs' ? ing.unit : 'g';
+        ing.unit === 'g' || ing.unit === 'ml' || ing.unit === 'pcs'
+          ? ing.unit
+          : 'g';
 
-      let findQuery = supabase
+      const { data: existingIng, error: findErr } = await supabase
         .from('ingredients')
-        .select('id, pack_size, pack_cost, unit')
-        .ilike('name', ingName);
+        .select('id, user_id')
+        .or(`user_id.eq.${user.id},and(user_id.is.null,is_public.eq.true)`)
+        .ilike('name', escapedIngName)
+        .order('user_id', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (userId) {
-        findQuery = findQuery.or(`user_id.eq.${userId},user_id.is.null`);
-      } else {
-        findQuery = findQuery.is('user_id', null);
-      }
-
-      const { data: existingIng, error: findErr } = await findQuery.maybeSingle();
       if (findErr) return { success: false, error: findErr.message };
 
       let ingredientId: string;
@@ -115,7 +181,10 @@ export async function acceptProposedRecipe(
           packSize = 1;
           packCost =
             ing.quantity > 0 && ing.estimated_cost_inr > 0
-              ? Math.max(1, Math.round((ing.estimated_cost_inr / ing.quantity) * 100) / 100)
+              ? Math.max(
+                  1,
+                  Math.round((ing.estimated_cost_inr / ing.quantity) * 100) / 100
+                )
               : 7;
         } else if (canonicalUnit === 'ml') {
           packSize = 500;
@@ -145,7 +214,8 @@ export async function acceptProposedRecipe(
         const { data: newIng, error: createIngErr } = await supabase
           .from('ingredients')
           .insert({
-            user_id: userId,
+            user_id: user.id,
+            is_public: false,
             name: ingName,
             unit: canonicalUnit,
             pack_size: packSize,
@@ -185,30 +255,54 @@ export async function acceptProposedRecipe(
       );
     }
 
-    // 3. Insert or Update Recipe
-    let recipeId = options?.replaceRecipeId;
+    // 3. Insert or Update Recipe (strictly scoped to user.id)
+    let recipeId = parsedOptions.data?.replaceRecipeId;
 
     if (recipeId) {
-      let upQuery = supabase
+      const { data: updatedRec, error: upErr } = await supabase
         .from('recipes')
         .update({ name: recipeName, notes })
-        .eq('id', recipeId);
+        .eq('id', recipeId)
+        .eq('user_id', user.id)
+        .select('id')
+        .maybeSingle();
 
-      if (userId) {
-        upQuery = upQuery.or(`user_id.eq.${userId},user_id.is.null`);
-      } else {
-        upQuery = upQuery.is('user_id', null);
-      }
-
-      const { error: upErr } = await upQuery;
       if (upErr) return { success: false, error: upErr.message };
 
-      await supabase.from('recipe_ingredients').delete().eq('recipe_id', recipeId);
+      if (updatedRec) {
+        const { error: delRiErr } = await supabase
+          .from('recipe_ingredients')
+          .delete()
+          .eq('recipe_id', recipeId);
+
+        if (delRiErr) return { success: false, error: delRiErr.message };
+      } else {
+        // If replacing a starter template or non-owned ID, fork as a new user-owned recipe
+        const { data: forkedRecipe, error: forkErr } = await supabase
+          .from('recipes')
+          .insert({
+            user_id: user.id,
+            is_public: false,
+            name: recipeName,
+            notes,
+          })
+          .select('id')
+          .single();
+
+        if (forkErr || !forkedRecipe) {
+          return {
+            success: false,
+            error: forkErr?.message ?? 'Failed to save scaled recipe',
+          };
+        }
+        recipeId = forkedRecipe.id;
+      }
     } else {
       const { data: newRecipe, error: recErr } = await supabase
         .from('recipes')
         .insert({
-          user_id: userId,
+          user_id: user.id,
+          is_public: false,
           name: recipeName,
           notes,
         })
@@ -216,7 +310,10 @@ export async function acceptProposedRecipe(
         .single();
 
       if (recErr || !newRecipe) {
-        return { success: false, error: recErr?.message ?? 'Failed to create recipe' };
+        return {
+          success: false,
+          error: recErr?.message ?? 'Failed to create recipe',
+        };
       }
 
       recipeId = newRecipe.id;
@@ -232,59 +329,49 @@ export async function acceptProposedRecipe(
     );
 
     if (riRows.length > 0) {
-      const { error: riErr } = await supabase.from('recipe_ingredients').insert(riRows);
+      const { error: riErr } = await supabase
+        .from('recipe_ingredients')
+        .insert(riRows);
       if (riErr) return { success: false, error: riErr.message };
     }
 
     // 5. Schedule into Day Plans if addToDate is provided
     let dayPlanId: string | undefined;
 
-    if (options?.addToDate) {
-      const dayOfWeek = parseDayOfWeek(options.addToDate);
-      const servings = Number(
+    if (parsedOptions.data?.addToDate) {
+      const dayOfWeek = parseDayOfWeek(parsedOptions.data.addToDate);
+      const rawServings = Number(
         (proposal as ProposedRecipePayload).servings ||
           (proposal as ScaledRecipePayload).updated_servings ||
           1
       );
+      const servings = Number.isFinite(rawServings) && rawServings > 0 ? rawServings : 1;
 
-      let maxQuery = supabase
+      const { data: maxRow } = await supabase
         .from('day_plans')
         .select('sort_order')
-        .eq('day_of_week', dayOfWeek);
-
-      if (userId) {
-        maxQuery = maxQuery.eq('user_id', userId);
-      } else {
-        maxQuery = maxQuery.is('user_id', null);
-      }
-
-      const { data: maxRow } = await maxQuery
+        .eq('user_id', user.id)
+        .eq('day_of_week', dayOfWeek)
         .order('sort_order', { ascending: false })
         .limit(1)
         .maybeSingle();
 
       const sortOrder = maxRow ? Number(maxRow.sort_order) + 1 : 0;
 
-      // Check if recipe already exists on this day
-      let checkQuery = supabase
+      const { data: existingPlan } = await supabase
         .from('day_plans')
         .select('id, servings')
+        .eq('user_id', user.id)
         .eq('day_of_week', dayOfWeek)
-        .eq('recipe_id', recipeId!);
-
-      if (userId) {
-        checkQuery = checkQuery.eq('user_id', userId);
-      } else {
-        checkQuery = checkQuery.is('user_id', null);
-      }
-
-      const { data: existingPlan } = await checkQuery.maybeSingle();
+        .eq('recipe_id', recipeId!)
+        .maybeSingle();
 
       if (existingPlan) {
         const { data: updatedPlan, error: upPlanErr } = await supabase
           .from('day_plans')
           .update({ servings: Number(existingPlan.servings) + servings })
           .eq('id', existingPlan.id)
+          .eq('user_id', user.id)
           .select('id')
           .single();
 
@@ -294,7 +381,7 @@ export async function acceptProposedRecipe(
         const { data: newPlan, error: planErr } = await supabase
           .from('day_plans')
           .insert({
-            user_id: userId,
+            user_id: user.id,
             day_of_week: dayOfWeek,
             recipe_id: recipeId!,
             servings,

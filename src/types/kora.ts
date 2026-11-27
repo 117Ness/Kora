@@ -37,6 +37,7 @@ export interface UserProfile {
 export interface Ingredient {
   id: string;
   user_id?: string | null;
+  is_public?: boolean;
   name: string;
   unit: string; // canonical: 'g' | 'ml' | 'pcs'
   pack_size: number;
@@ -53,6 +54,7 @@ export interface Ingredient {
 export interface Recipe {
   id: string;
   user_id?: string | null;
+  is_public?: boolean;
   name: string;
   notes: string | null;
   created_at: string;

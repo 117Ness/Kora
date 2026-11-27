@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   X,
   Sliders,
@@ -9,14 +10,16 @@ import {
   Check,
   User,
   LogOut,
-  Mail,
+  LogIn,
   AlertCircle,
   Sparkles,
 } from 'lucide-react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { getUserProfile, updateUserProfile } from '@/app/actions/profile';
 import type { UserProfile, UpdateUserProfileInput } from '@/types/kora';
 import { OliveSprigSvg } from '@/components/BotanicalAccents';
+import { AuthModal } from '@/components/auth/AuthModal';
 
 const PRESET_COOKWARE = [
   'Induction Cooktop',
@@ -47,19 +50,22 @@ interface KitchenProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   onProfileUpdated?: (profile: UserProfile) => void;
+  onOpenAuth?: () => void;
 }
 
 export function KitchenProfileModal({
   isOpen,
   onClose,
   onProfileUpdated,
+  onOpenAuth,
 }: KitchenProfileModalProps) {
+  const router = useRouter();
   const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState('');
-  const [calories, setCalories] = useState(2200);
-  const [protein, setProtein] = useState(100);
-  const [carbs, setCarbs] = useState(250);
-  const [fats, setFats] = useState(70);
+  const [calories, setCalories] = useState(2800);
+  const [protein, setProtein] = useState(120);
+  const [carbs, setCarbs] = useState(350);
+  const [fats, setFats] = useState(85);
   const [microGoals, setMicroGoals] = useState<string[]>([]);
   const [cookware, setCookware] = useState<string[]>([]);
   const [dietaryPrefs, setDietaryPrefs] = useState('');
@@ -69,7 +75,8 @@ export function KitchenProfileModal({
   const [customMicro, setCustomMicro] = useState('');
 
   // Auth states
-  const [magicEmail, setMagicEmail] = useState('');
+  const [isLocalAuthOpen, setIsLocalAuthOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -77,7 +84,13 @@ export function KitchenProfileModal({
   const [isPending, startTransition] = useTransition();
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
-  const supabase = createClient();
+  const supabase = useMemo(() => {
+    try {
+      return createClient();
+    } catch {
+      return null;
+    }
+  }, []);
 
   // Load active profile and auth user on open
   useEffect(() => {
@@ -86,11 +99,13 @@ export function KitchenProfileModal({
     let isMounted = true;
     async function loadData() {
       // 1. Check auth user
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (isMounted) {
-        setAuthUserEmail(user?.email ?? null);
+      if (supabase) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (isMounted) {
+          setAuthUserEmail(user?.email ?? null);
+        }
       }
 
       // 2. Load user profile
@@ -98,10 +113,10 @@ export function KitchenProfileModal({
       if (res.success && isMounted) {
         const p = res.data;
         setDisplayName(p.display_name || '');
-        setCalories(p.daily_calorie_target || 2200);
-        setProtein(p.protein_target_g || 100);
-        setCarbs(p.carbs_target_g || 250);
-        setFats(p.fats_target_g || 70);
+        setCalories(p.daily_calorie_target || 2800);
+        setProtein(p.protein_target_g || 120);
+        setCarbs(p.carbs_target_g || 350);
+        setFats(p.fats_target_g || 85);
         setMicroGoals(p.micro_goals || []);
         setCookware(
           p.cookware && p.cookware.length > 0
@@ -114,8 +129,25 @@ export function KitchenProfileModal({
 
     loadData();
 
+    if (!supabase) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (isMounted) {
+        setAuthUserEmail(session?.user?.email ?? null);
+        setAuthError(null);
+      }
+      loadData();
+    });
+
     return () => {
       isMounted = false;
+      subscription.unsubscribe();
     };
   }, [isOpen, supabase]);
 
@@ -151,55 +183,41 @@ export function KitchenProfileModal({
     }
   };
 
-  // Sign in with Email Magic Link
-  const handleMagicLinkSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthStatus(null);
-    setAuthError(null);
-
-    if (!magicEmail || !magicEmail.includes('@')) {
-      setAuthError('Please enter a valid email address');
-      return;
-    }
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email: magicEmail,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-
-    if (error) {
-      setAuthError(error.message);
-    } else {
-      setAuthStatus('Magic link sent! Check your email to sign in.');
-      setMagicEmail('');
-    }
-  };
-
-  // Sign in with Google OAuth
-  const handleGoogleSignIn = async () => {
-    setAuthError(null);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-    if (error) {
-      setAuthError(error.message);
-    }
-  };
-
   // Sign out
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setAuthUserEmail(null);
-    setAuthStatus('Signed out successfully.');
-    // Reload guest profile
-    const res = await getUserProfile();
-    if (res.success) {
-      onProfileUpdated?.(res.data);
+    if (!supabase || isSigningOut) return;
+    setAuthError(null);
+    setAuthStatus(null);
+    setIsSigningOut(true);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        setAuthError(error.message);
+        return;
+      }
+      setAuthUserEmail(null);
+      setAuthStatus('Signed out successfully.');
+      // Reload guest profile and refresh server-rendered views
+      const res = await getUserProfile();
+      if (res.success) {
+        const p = res.data;
+        setDisplayName(p.display_name || '');
+        setCalories(p.daily_calorie_target || 2800);
+        setProtein(p.protein_target_g || 120);
+        setCarbs(p.carbs_target_g || 350);
+        setFats(p.fats_target_g || 85);
+        setMicroGoals(p.micro_goals || []);
+        setCookware(
+          p.cookware && p.cookware.length > 0
+            ? p.cookware
+            : ['Induction Cooktop', 'Non-Stick Pan', 'Pressure Cooker']
+        );
+        setDietaryPrefs(p.dietary_preferences || '');
+        onProfileUpdated?.(p);
+      }
+      router.refresh();
+    } finally {
+      setIsSigningOut(false);
     }
   };
 
@@ -209,10 +227,10 @@ export function KitchenProfileModal({
     startTransition(async () => {
       const payload: UpdateUserProfileInput = {
         display_name: displayName.trim() || null,
-        daily_calorie_target: Number(calories) || 2200,
-        protein_target_g: Number(protein) || 100,
-        carbs_target_g: Number(carbs) || 250,
-        fats_target_g: Number(fats) || 70,
+        daily_calorie_target: Number(calories) || 2800,
+        protein_target_g: Number(protein) || 120,
+        carbs_target_g: Number(carbs) || 350,
+        fats_target_g: Number(fats) || 85,
         micro_goals: microGoals,
         cookware: cookware,
         dietary_preferences: dietaryPrefs.trim() || null,
@@ -222,16 +240,16 @@ export function KitchenProfileModal({
       if (res.success) {
         setSaveStatus('Preferences saved successfully ✓');
         onProfileUpdated?.(res.data);
+        router.refresh();
         setTimeout(() => {
           setSaveStatus(null);
           onClose();
         }, 800);
       } else {
-        // Even if guest (not signed in), keep locally in state
         setSaveStatus(
           authUserEmail
             ? `Error: ${res.error}`
-            : 'Saved in session. Sign in below to persist across devices ✓'
+            : 'Sign in above to save your profile & kitchen targets.'
         );
       }
     });
@@ -280,18 +298,25 @@ export function KitchenProfileModal({
           {/* Section 0: User Identity & Multi-User Switch Strip */}
           <div className="rounded-2xl border border-[#C8BFA8] bg-[#EBE3D2] p-4 text-xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F7F2E7] border border-[#C8BFA8] text-[#7A7463]">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F7F2E7] border border-[#C8BFA8] text-[#7A7463]">
                   <User className="h-4 w-4" strokeWidth={1.75} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="font-semibold text-[#3E3C32] flex items-center gap-1.5">
-                    <span>{authUserEmail ? 'Signed In' : 'Guest Mode (Local)'}</span>
+                    <span className="truncate">
+                      {authUserEmail
+                        ? displayName.trim() || authUserEmail.split('@')[0]
+                        : 'Guest Mode (Local)'}
+                    </span>
                     {authUserEmail && (
-                      <span className="inline-block h-2 w-2 rounded-full bg-emerald-600" />
+                      <span
+                        className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#6B7F5E]"
+                        title="Signed in"
+                      />
                     )}
                   </div>
-                  <div className="text-[11px] text-[#7D7765]">
+                  <div className="text-[11px] text-[#7D7765] truncate">
                     {authUserEmail ?? 'Sign in to sync your profile across devices'}
                   </div>
                 </div>
@@ -301,51 +326,47 @@ export function KitchenProfileModal({
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[#C8BFA8] bg-[#F7F2E7] hover:bg-[#F3EDE0] px-3 py-1.5 text-[11px] font-medium text-[#7D7765] hover:text-[#3E3C32] transition-colors self-start sm:self-auto"
+                  disabled={isSigningOut}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#C8BFA8] bg-[#F7F2E7] hover:bg-[#F3EDE0] px-3.5 py-1.5 text-[11px] font-medium text-[#7D7765] hover:text-[#3E3C32] transition-colors self-start sm:self-auto disabled:opacity-50"
                 >
                   <LogOut className="h-3 w-3" strokeWidth={1.75} />
-                  <span>Sign Out</span>
+                  <span>{isSigningOut ? 'Signing out...' : 'Sign Out'}</span>
                 </button>
               ) : (
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                  <form
-                    onSubmit={handleMagicLinkSignIn}
-                    className="flex items-center gap-1.5"
-                  >
-                    <input
-                      type="email"
-                      placeholder="Enter email for magic link"
-                      value={magicEmail}
-                      onChange={(e) => setMagicEmail(e.target.value)}
-                      className="rounded-full bg-[#F7F2E7] border border-[#C8BFA8] px-3 py-1 text-[11px] text-[#3E3C32] placeholder:text-[#7D7765] focus:outline-none focus:ring-1 focus:ring-[#7A7463] w-48 shadow-xs"
-                    />
-                    <button
-                      type="submit"
-                      className="inline-flex items-center gap-1 rounded-full bg-[#7A7463] hover:bg-[#696353] text-[#F7F2E7] px-3 py-1 text-[11px] font-medium shadow-xs transition-colors shrink-0"
-                    >
-                      <Mail className="h-3 w-3" strokeWidth={1.75} />
-                      <span>Send Link</span>
-                    </button>
-                  </form>
+                <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                   <button
                     type="button"
-                    onClick={handleGoogleSignIn}
-                    className="inline-flex items-center justify-center gap-1 rounded-full border border-[#C8BFA8] bg-[#F7F2E7] hover:bg-[#F3EDE0] px-2.5 py-1 text-[11px] font-medium text-[#3E3C32] shadow-xs transition-colors"
+                    onClick={() => {
+                      if (onOpenAuth) {
+                        onOpenAuth();
+                      } else {
+                        setIsLocalAuthOpen(true);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#7A7463] hover:bg-[#696353] text-[#F7F2E7] px-3.5 py-1.5 text-[11px] font-semibold shadow-xs transition-colors"
                   >
-                    <span>Google</span>
+                    <LogIn className="h-3 w-3" strokeWidth={1.75} />
+                    <span>Sign In</span>
                   </button>
+                  <Link
+                    href="/login"
+                    onClick={onClose}
+                    className="inline-flex items-center rounded-full border border-[#C8BFA8] bg-[#F7F2E7] hover:bg-[#F3EDE0] px-3 py-1.5 text-[11px] font-medium text-[#3E3C32] transition-colors"
+                  >
+                    Full Login Page
+                  </Link>
                 </div>
               )}
             </div>
 
             {authStatus && (
-              <div className="mt-2 text-emerald-800 text-[11px] font-medium bg-emerald-100/60 rounded-xl px-2.5 py-1 border border-emerald-300">
+              <div className="mt-2.5 text-[#3E4F34] text-[11px] font-medium bg-[#6B7F5E]/10 rounded-xl px-3 py-1.5 border border-[#6B7F5E]/40">
                 {authStatus}
               </div>
             )}
             {authError && (
-              <div className="mt-2 text-red-800 text-[11px] font-medium bg-red-100/60 rounded-xl px-2.5 py-1 border border-red-300 flex items-center gap-1">
-                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              <div className="mt-2.5 text-[#8C482C] text-[11px] font-medium bg-[#B86B4B]/10 rounded-xl px-3 py-1.5 border border-[#B86B4B]/40 flex items-center gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 text-[#B86B4B]" />
                 <span>{authError}</span>
               </div>
             )}
@@ -612,6 +633,13 @@ export function KitchenProfileModal({
           </div>
         </div>
       </div>
+
+      {!onOpenAuth && (
+        <AuthModal
+          isOpen={isLocalAuthOpen}
+          onClose={() => setIsLocalAuthOpen(false)}
+        />
+      )}
     </div>
   );
 }

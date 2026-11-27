@@ -119,11 +119,15 @@ export function IngredientsTabView({
   };
 
   const handleDelete = (ingredientId: string) => {
+    setInlineError(null);
     startDeleteTransition(async () => {
       const res = await deleteIngredient(ingredientId);
       if (res.success) {
         setDeletingId(null);
         await onDataChange();
+      } else {
+        setInlineError(res.error);
+        setDeletingId(null);
       }
     });
   };

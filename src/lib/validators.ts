@@ -11,25 +11,25 @@ export const userProfileSchema = z.object({
     .int('Daily calorie target must be an integer')
     .min(500, 'Daily calorie target must be at least 500')
     .max(10000, 'Daily calorie target cannot exceed 10000')
-    .default(2200),
+    .default(2800),
   protein_target_g: z.coerce
     .number()
     .int('Protein target must be an integer')
     .min(0, 'Protein target must be 0 or greater')
     .max(1000, 'Protein target cannot exceed 1000g')
-    .default(100),
+    .default(120),
   carbs_target_g: z.coerce
     .number()
     .int('Carbs target must be an integer')
     .min(0, 'Carbs target must be 0 or greater')
     .max(1000, 'Carbs target cannot exceed 1000g')
-    .default(250),
+    .default(350),
   fats_target_g: z.coerce
     .number()
     .int('Fats target must be an integer')
     .min(0, 'Fats target must be 0 or greater')
     .max(500, 'Fats target cannot exceed 500g')
-    .default(70),
+    .default(85),
   micro_goals: z.array(z.string().trim()).default([]),
   cookware: z
     .array(z.string().trim())
@@ -47,7 +47,9 @@ export type UpdateUserProfileData = z.infer<typeof updateUserProfileSchema>;
 
 export const createIngredientSchema = z.object({
   name: z.string().trim().min(1, 'Ingredient name is required'),
-  unit: z.string().trim().min(1, 'Unit of measurement is required'),
+  unit: z.enum(['g', 'ml', 'pcs'], {
+    message: 'Unit must be normalized to g, ml, or pcs',
+  }),
   pack_size: z.coerce.number().positive('Pack size must be greater than 0'),
   pack_cost: z.coerce.number().min(0, 'Pack cost must be 0 or greater'),
   calories_per_unit: z.coerce

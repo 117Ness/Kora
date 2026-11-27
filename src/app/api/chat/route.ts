@@ -111,9 +111,14 @@ export async function POST(req: Request) {
     };
 
     const messages = body.messages ?? [];
-    if (!Array.isArray(messages) || messages.length === 0) {
+    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 50) {
       return new Response(
-        JSON.stringify({ error: 'Messages array is required' }),
+        JSON.stringify({
+          error:
+            messages.length > 50
+              ? 'Too many messages in conversation history'
+              : 'Messages array is required',
+        }),
         {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
@@ -132,14 +137,14 @@ export async function POST(req: Request) {
       : {
           id: 'guest',
           display_name: 'Guest Chef',
-          daily_calorie_target: 2200,
-          protein_target_g: 100,
-          carbs_target_g: 250,
-          fats_target_g: 70,
-          micro_goals: ['High Fiber'],
+          daily_calorie_target: 2800,
+          protein_target_g: 120,
+          carbs_target_g: 350,
+          fats_target_g: 85,
+          micro_goals: ['High Fiber', 'Iron Rich'],
           cookware: ['Induction Cooktop', 'Non-Stick Pan', 'Pressure Cooker'],
           dietary_preferences: null,
-          updated_at: new Date().toISOString(),
+          updated_at: '1970-01-01T00:00:00.000Z',
         };
 
     const ingredients = libraryRes.success ? libraryRes.data.ingredients : [];

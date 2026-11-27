@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import './globals.css';
 import { Navbar } from '@/components/Navbar';
 import { getUserProfile } from '@/app/actions/profile';
+import { createClient } from '@/lib/supabase/server';
 
 const playfair = Playfair_Display({
   subsets: ['latin'],
@@ -29,7 +30,40 @@ export const metadata: Metadata = {
 async function NavbarLoader() {
   const res = await getUserProfile();
   const initialProfile = res.success ? res.data : null;
-  return <Navbar initialProfile={initialProfile} />;
+
+  let initialUserEmail: string | null = null;
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    initialUserEmail = user?.email ?? null;
+  } catch {
+    initialUserEmail = null;
+  }
+
+  return (
+    <Navbar
+      initialProfile={initialProfile}
+      initialUserEmail={initialUserEmail}
+    />
+  );
+}
+
+function NavbarFallback() {
+  return (
+    <header className="sticky top-0 z-40 w-full border-b border-[#C8BFA8] bg-[#F3EDE0]/95 backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-xl border border-[#C8BFA8] bg-[#EBE3D2]" />
+          <span className="font-serif text-2xl font-bold tracking-tight text-[#3E3C32] leading-none">
+            Kora
+          </span>
+        </div>
+        <div className="h-8 w-40 rounded-full border border-[#C8BFA8] bg-[#EBE3D2]" />
+      </div>
+    </header>
+  );
 }
 
 export default function RootLayout({
@@ -43,7 +77,7 @@ export default function RootLayout({
       className={`${playfair.variable} ${plusJakarta.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[#F3EDE0] text-[#3E3C32] font-sans selection:bg-[#7A7463]/25 selection:text-[#3E3C32]">
-        <Suspense fallback={<Navbar />}>
+        <Suspense fallback={<NavbarFallback />}>
           <NavbarLoader />
         </Suspense>
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">

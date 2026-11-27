@@ -34,6 +34,7 @@ export function RecipeCard({
 }: RecipeCardProps) {
   const [isDeleting, startDeleteTransition] = useTransition();
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
 
   const cost = calculateRecipeCost(recipe);
@@ -41,11 +42,14 @@ export function RecipeCard({
   const ingredientsCount = recipe.recipe_ingredients?.length ?? 0;
 
   const handleDelete = () => {
+    setDeleteError(null);
     startDeleteTransition(async () => {
       const res = await deleteRecipe(recipe.id);
       if (res.success) {
         setShowConfirmDelete(false);
         await onDataChange();
+      } else {
+        setDeleteError(res.error);
       }
     });
   };
@@ -108,6 +112,11 @@ export function RecipeCard({
           <p className="mt-1 text-[11px] text-[#B86B4B]/80 font-sans">
             This will permanently remove the recipe and any scheduled meal plan slots.
           </p>
+          {deleteError && (
+            <p className="mt-1.5 text-[11px] font-semibold text-[#B86B4B]">
+              {deleteError}
+            </p>
+          )}
           <div className="mt-3 flex items-center justify-end gap-2">
             <button
               type="button"

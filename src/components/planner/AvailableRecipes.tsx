@@ -40,6 +40,7 @@ export function AvailableRecipes({
     recipeId: string;
     message: string;
   } | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const dayName = DAYS_OF_WEEK[selectedDay];
 
@@ -58,6 +59,7 @@ export function AvailableRecipes({
 
   const handleAdd = (recipe: RecipeWithIngredients) => {
     setAddingId(recipe.id);
+    setErrorMessage(null);
     startTransition(async () => {
       const res = await addRecipeToDay(selectedDay, recipe.id, 1);
       if (res.success) {
@@ -71,6 +73,8 @@ export function AvailableRecipes({
             curr?.recipeId === recipe.id ? null : curr
           );
         }, 2500);
+      } else {
+        setErrorMessage(res.error);
       }
       setAddingId(null);
     });
@@ -100,6 +104,13 @@ export function AvailableRecipes({
           />
         </div>
       </div>
+
+      {/* Error Banner */}
+      {errorMessage && (
+        <div className="rounded-2xl border border-[#B86B4B]/40 bg-[#B86B4B]/10 px-4 py-2.5 text-xs font-medium text-[#B86B4B]">
+          {errorMessage}
+        </div>
+      )}
 
       {/* Available Recipes Grid */}
       {filteredRecipes.length === 0 ? (

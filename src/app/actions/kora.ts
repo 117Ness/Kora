@@ -3,9 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import {
-  createIngredientSchema,
-} from '@/lib/validators';
+import { createIngredientSchema } from '@/lib/validators';
 import type {
   ConsumptionLog,
   DayPlan,
@@ -21,7 +19,7 @@ import {
 import { toBaseUnit } from '@/lib/units';
 
 // =============================================================
-// Generic response envelope
+// Generic response envelope & auth/query helpers
 // =============================================================
 
 type ActionResult<T = undefined> =
@@ -40,6 +38,27 @@ function zodErr(e: z.ZodError): ActionResult<never> {
   return err(e.issues.map((issue) => issue.message).join('; '));
 }
 
+function escapeIlikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+const AUTH_REQUIRED_MSG =
+  'Please sign in (via Kitchen & Goals) to save or modify your kitchen data.';
+
+async function requireAuth() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    return { supabase, user: null, error: AUTH_REQUIRED_MSG } as const;
+  }
+
+  return { supabase, user, error: null } as const;
+}
+
 // =============================================================
 // Supabase nested-select strings (kept as constants for DRY-ness)
 // =============================================================
@@ -47,6 +66,7 @@ function zodErr(e: z.ZodError): ActionResult<never> {
 const RECIPE_SELECT = `
   id,
   user_id,
+  is_public,
   name,
   notes,
   created_at,
@@ -58,6 +78,7 @@ const RECIPE_SELECT = `
     ingredient:ingredients (
       id,
       user_id,
+      is_public,
       name,
       unit,
       pack_size,
@@ -97,13 +118,9 @@ export type PlannerData = {
 export async function getPlannerData(): Promise<ActionResult<PlannerData>> {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    let dayPlansQuery = supabase
-      .from('day_plans')
-      .select(DAY_PLAN_SELECT)
-      .order('day_of_week', { ascending: true })
-      .order('sort_order', { ascending: true });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     let recipesQuery = supabase
       .from('recipes')
@@ -111,23 +128,37 @@ export async function getPlannerData(): Promise<ActionResult<PlannerData>> {
       .order('name', { ascending: true });
 
     if (user) {
-      dayPlansQuery = dayPlansQuery.or(`user_id.eq.${user.id},user_id.is.null`);
-      recipesQuery = recipesQuery.or(`user_id.eq.${user.id},user_id.is.null`);
-    } else {
-      dayPlansQuery = dayPlansQuery.is('user_id', null);
-      recipesQuery = recipesQuery.is('user_id', null);
+      recipesQuery = recipesQuery.or(
+        `user_id.eq.${user.id},and(user_id.is.null,is_public.eq.true)`
+      );
+
+      const dayPlansQuery = supabase
+        .from('day_plans')
+        .select(DAY_PLAN_SELECT)
+        .eq('user_id', user.id)
+        .order('day_of_week', { ascending: true })
+        .order('sort_order', { ascending: true });
+
+      const [dayPlansRes, recipesRes] = await Promise.all([
+        dayPlansQuery,
+        recipesQuery,
+      ]);
+
+      if (dayPlansRes.error) return err(dayPlansRes.error.message);
+      if (recipesRes.error) return err(recipesRes.error.message);
+
+      return ok({
+        dayPlans: (dayPlansRes.data ?? []) as unknown as DayPlanWithRecipe[],
+        recipes: (recipesRes.data ?? []) as unknown as RecipeWithIngredients[],
+      });
     }
 
-    const [dayPlansRes, recipesRes] = await Promise.all([
-      dayPlansQuery,
-      recipesQuery,
-    ]);
-
-    if (dayPlansRes.error) return err(dayPlansRes.error.message);
+    // Unauthenticated guests see no personal day plans and only explicitly public starter templates
+    const recipesRes = await recipesQuery.is('user_id', null).eq('is_public', true);
     if (recipesRes.error) return err(recipesRes.error.message);
 
     return ok({
-      dayPlans: (dayPlansRes.data ?? []) as unknown as DayPlanWithRecipe[],
+      dayPlans: [],
       recipes: (recipesRes.data ?? []) as unknown as RecipeWithIngredients[],
     });
   } catch (e) {
@@ -160,24 +191,18 @@ export async function addRecipeToDay(
   const { dayOfWeek: day_of_week, recipeId: recipe_id, servings: srvs } = parsed.data;
 
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const userId = user?.id ?? null;
+    const { supabase, user, error: authErr } = await requireAuth();
+    if (!user) return err(authErr);
 
-    // Check if the (day_of_week, recipe_id) pair already exists for this user/guest
-    let existingQuery = supabase
+    // Check if the (day_of_week, recipe_id) pair already exists for this user
+    const { data: existing, error: fetchErr } = await supabase
       .from('day_plans')
       .select('id, servings')
+      .eq('user_id', user.id)
       .eq('day_of_week', day_of_week)
-      .eq('recipe_id', recipe_id);
+      .eq('recipe_id', recipe_id)
+      .maybeSingle();
 
-    if (userId) {
-      existingQuery = existingQuery.eq('user_id', userId);
-    } else {
-      existingQuery = existingQuery.is('user_id', null);
-    }
-
-    const { data: existing, error: fetchErr } = await existingQuery.maybeSingle();
     if (fetchErr) return err(fetchErr.message);
 
     if (existing) {
@@ -186,6 +211,7 @@ export async function addRecipeToDay(
         .from('day_plans')
         .update({ servings: newServings })
         .eq('id', existing.id)
+        .eq('user_id', user.id)
         .select()
         .single();
 
@@ -195,18 +221,11 @@ export async function addRecipeToDay(
     }
 
     // Determine sort_order: max(sort_order) + 1 for that day
-    let maxQuery = supabase
+    const { data: maxRow } = await supabase
       .from('day_plans')
       .select('sort_order')
-      .eq('day_of_week', day_of_week);
-
-    if (userId) {
-      maxQuery = maxQuery.eq('user_id', userId);
-    } else {
-      maxQuery = maxQuery.is('user_id', null);
-    }
-
-    const { data: maxRow } = await maxQuery
+      .eq('user_id', user.id)
+      .eq('day_of_week', day_of_week)
       .order('sort_order', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -216,7 +235,7 @@ export async function addRecipeToDay(
     const { data, error } = await supabase
       .from('day_plans')
       .insert({
-        user_id: userId,
+        user_id: user.id,
         day_of_week,
         recipe_id,
         servings: srvs,
@@ -244,25 +263,22 @@ export async function removeRecipeFromDay(
   if (!parsed.success) return zodErr(parsed.error);
 
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { supabase, user, error: authErr } = await requireAuth();
+    if (!user) return err(authErr);
 
-    let query = supabase
+    const { data: deleted, error } = await supabase
       .from('day_plans')
       .delete()
-      .eq('id', parsed.data);
+      .eq('id', parsed.data)
+      .eq('user_id', user.id)
+      .select('id')
+      .maybeSingle();
 
-    if (user) {
-      query = query.or(`user_id.eq.${user.id},user_id.is.null`);
-    } else {
-      query = query.is('user_id', null);
-    }
-
-    const { error } = await query;
     if (error) return err(error.message);
+    if (!deleted) return err('Meal plan entry not found or unauthorized.');
 
     revalidatePath('/');
-    return ok({ id: parsed.data });
+    return ok({ id: deleted.id as string });
   } catch (e) {
     return err(e instanceof Error ? e.message : 'Failed to remove recipe from day');
   }
@@ -304,15 +320,15 @@ export async function createRecipeWithIngredients(
   const { name, notes, ingredients } = parsed.data;
 
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const userId = user?.id ?? null;
+    const { supabase, user, error: authErr } = await requireAuth();
+    if (!user) return err(authErr);
 
-    // 1. Insert the recipe
+    // 1. Insert the user-owned recipe
     const { data: recipe, error: recipeErr } = await supabase
       .from('recipes')
       .insert({
-        user_id: userId,
+        user_id: user.id,
+        is_public: false,
         name,
         notes: notes ?? null,
       })
@@ -327,22 +343,41 @@ export async function createRecipeWithIngredients(
       return ok({ ...(recipe as Recipe), recipe_ingredients: [] });
     }
 
-    // 2. Upsert / resolve each ingredient
+    // 2. Resolve or create each ingredient strictly within user scope (or read-only public template)
     const resolvedLinks: { ingredient_id: string; quantity_used: number }[] = [];
 
     for (const ing of ingredients) {
       let ingredientId = ing.ingredient_id;
 
-      if (!ingredientId) {
+      if (ingredientId) {
+        // Verify ingredient is accessible (owned by user or public template)
+        const { data: accessibleIng, error: checkErr } = await supabase
+          .from('ingredients')
+          .select('id')
+          .eq('id', ingredientId)
+          .or(`user_id.eq.${user.id},and(user_id.is.null,is_public.eq.true)`)
+          .maybeSingle();
+
+        if (checkErr) return err(checkErr.message);
+        if (!accessibleIng) {
+          return err('Referenced ingredient was not found or is unauthorized.');
+        }
+      } else {
         let canonicalUnit = ing.unit ?? 'g';
         let canonicalPackSize = ing.pack_size ?? 1;
-        try {
-          if (ing.unit) {
+        if (ing.unit) {
+          try {
             const normalized = toBaseUnit(ing.pack_size ?? 1, ing.unit);
             canonicalUnit = normalized.unit;
             canonicalPackSize = normalized.value;
+          } catch (unitErr) {
+            return err(
+              unitErr instanceof Error
+                ? unitErr.message
+                : `Unsupported unit "${ing.unit}"`
+            );
           }
-        } catch { /* canonical fallback */ }
+        }
 
         const ingParsed = createIngredientSchema.safeParse({
           name: ing.name,
@@ -358,24 +393,20 @@ export async function createRecipeWithIngredients(
         if (!ingParsed.success) return zodErr(ingParsed.error);
 
         const normalizedName = ingParsed.data.name.toLowerCase().trim();
+        const escapedName = escapeIlikePattern(normalizedName);
 
-        let findQuery = supabase
+        // Prefer the user's own ingredient first, otherwise fall back to a public template
+        const { data: existingOwn, error: findOwnErr } = await supabase
           .from('ingredients')
           .select('id')
-          .ilike('name', normalizedName);
+          .eq('user_id', user.id)
+          .ilike('name', escapedName)
+          .maybeSingle();
 
-        if (userId) {
-          findQuery = findQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        } else {
-          findQuery = findQuery.is('user_id', null);
-        }
+        if (findOwnErr) return err(findOwnErr.message);
 
-        const { data: existing, error: findErr } = await findQuery.maybeSingle();
-        if (findErr) return err(findErr.message);
-
-        if (existing) {
-          // Update details if owned
-          let upQuery = supabase
+        if (existingOwn) {
+          const { error: upErr } = await supabase
             .from('ingredients')
             .update({
               unit: ingParsed.data.unit,
@@ -387,20 +418,17 @@ export async function createRecipeWithIngredients(
               fats_per_unit: ingParsed.data.fats_per_unit,
               weight_per_unit_g: ingParsed.data.weight_per_unit_g ?? null,
             })
-            .eq('id', existing.id);
+            .eq('id', existingOwn.id)
+            .eq('user_id', user.id);
 
-          if (userId) {
-            upQuery = upQuery.eq('user_id', userId);
-          } else {
-            upQuery = upQuery.is('user_id', null);
-          }
-          await upQuery; // best-effort
-          ingredientId = existing.id;
+          if (upErr) return err(upErr.message);
+          ingredientId = existingOwn.id;
         } else {
           const { data: newIng, error: createErr } = await supabase
             .from('ingredients')
             .insert({
-              user_id: userId,
+              user_id: user.id,
+              is_public: false,
               name: ingParsed.data.name,
               unit: ingParsed.data.unit,
               pack_size: ingParsed.data.pack_size,
@@ -442,6 +470,7 @@ export async function createRecipeWithIngredients(
       .from('recipes')
       .select(RECIPE_SELECT)
       .eq('id', recipe.id as string)
+      .eq('user_id', user.id)
       .single();
 
     if (fetchErr) return err(fetchErr.message);
@@ -491,29 +520,22 @@ export async function logDayConsumption(
   } = parsed.data;
 
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const userId = user?.id ?? null;
+    const { supabase, user, error: authErr } = await requireAuth();
+    if (!user) return err(authErr);
 
-    let plansQuery = supabase
+    const { data: plans, error: plansErr } = await supabase
       .from('day_plans')
       .select(DAY_PLAN_SELECT)
+      .eq('user_id', user.id)
       .eq('day_of_week', day_of_week);
 
-    if (userId) {
-      plansQuery = plansQuery.or(`user_id.eq.${userId},user_id.is.null`);
-    } else {
-      plansQuery = plansQuery.is('user_id', null);
-    }
-
-    const { data: plans, error: plansErr } = await plansQuery;
     if (plansErr) return err(plansErr.message);
     if (!plans || plans.length === 0) {
       return ok({ logsInserted: 0, logs: [] });
     }
 
     const logRows: {
-      user_id: string | null;
+      user_id: string;
       log_date: string;
       ingredient_id: string;
       quantity_consumed: number;
@@ -540,7 +562,7 @@ export async function logDayConsumption(
         );
 
         logRows.push({
-          user_id: userId,
+          user_id: user.id,
           log_date,
           ingredient_id: ing.id,
           quantity_consumed,
@@ -561,14 +583,21 @@ export async function logDayConsumption(
 
     if (insertErr) return err(insertErr.message);
 
-    // Decrement stock_quantity
+    // Decrement stock_quantity only on caller-owned ingredients (enforced by RPC + RLS)
     for (const logRow of logRows) {
-      await supabase.rpc('decrement_stock', {
-        p_ingredient_id: logRow.ingredient_id,
-        p_quantity: logRow.quantity_consumed,
-      }).then(({ error }) => {
-        if (error) console.warn(`Failed to decrement stock for ${logRow.ingredient_id}:`, error.message);
-      });
+      await supabase
+        .rpc('decrement_stock', {
+          p_ingredient_id: logRow.ingredient_id,
+          p_quantity: logRow.quantity_consumed,
+        })
+        .then(({ error }) => {
+          if (error) {
+            console.warn(
+              `Failed to decrement stock for ${logRow.ingredient_id}:`,
+              error.message
+            );
+          }
+        });
     }
 
     revalidatePath('/insights');
@@ -593,7 +622,9 @@ export type LibraryData = {
 export async function getLibraryData(): Promise<ActionResult<LibraryData>> {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     let recipesQuery = supabase
       .from('recipes')
@@ -606,11 +637,15 @@ export async function getLibraryData(): Promise<ActionResult<LibraryData>> {
       .order('name', { ascending: true });
 
     if (user) {
-      recipesQuery = recipesQuery.or(`user_id.eq.${user.id},user_id.is.null`);
-      ingredientsQuery = ingredientsQuery.or(`user_id.eq.${user.id},user_id.is.null`);
+      recipesQuery = recipesQuery.or(
+        `user_id.eq.${user.id},and(user_id.is.null,is_public.eq.true)`
+      );
+      ingredientsQuery = ingredientsQuery.or(
+        `user_id.eq.${user.id},and(user_id.is.null,is_public.eq.true)`
+      );
     } else {
-      recipesQuery = recipesQuery.is('user_id', null);
-      ingredientsQuery = ingredientsQuery.is('user_id', null);
+      recipesQuery = recipesQuery.is('user_id', null).eq('is_public', true);
+      ingredientsQuery = ingredientsQuery.is('user_id', null).eq('is_public', true);
     }
 
     const [recipesRes, ingredientsRes] = await Promise.all([
@@ -648,28 +683,24 @@ export async function updateRecipe(
   if (!parsed.success) return zodErr(parsed.error);
 
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { supabase, user, error: authErr } = await requireAuth();
+    if (!user) return err(authErr);
 
-    let query = supabase
+    const { data: updated, error: updateErr } = await supabase
       .from('recipes')
       .update({
         name: parsed.data.name,
         notes: parsed.data.notes ?? null,
       })
-      .eq('id', parsed.data.id);
-
-    if (user) {
-      query = query.or(`user_id.eq.${user.id},user_id.is.null`);
-    } else {
-      query = query.is('user_id', null);
-    }
-
-    const { data: updated, error: updateErr } = await query
+      .eq('id', parsed.data.id)
+      .eq('user_id', user.id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateErr) return err(updateErr.message);
+    if (!updated) {
+      return err('Recipe not found, or starter templates cannot be edited directly.');
+    }
 
     revalidatePath('/library');
     revalidatePath('/');
@@ -691,27 +722,26 @@ export async function deleteRecipe(
   if (!parsed.success) return zodErr(parsed.error);
 
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { supabase, user, error: authErr } = await requireAuth();
+    if (!user) return err(authErr);
 
-    let query = supabase
+    const { data: deleted, error: delErr } = await supabase
       .from('recipes')
       .delete()
-      .eq('id', parsed.data);
+      .eq('id', parsed.data)
+      .eq('user_id', user.id)
+      .select('id')
+      .maybeSingle();
 
-    if (user) {
-      query = query.or(`user_id.eq.${user.id},user_id.is.null`);
-    } else {
-      query = query.is('user_id', null);
-    }
-
-    const { error: delErr } = await query;
     if (delErr) return err(delErr.message);
+    if (!deleted) {
+      return err('Recipe not found, or starter templates cannot be deleted.');
+    }
 
     revalidatePath('/library');
     revalidatePath('/');
     revalidatePath('/insights');
-    return ok({ id: parsed.data });
+    return ok({ id: deleted.id as string });
   } catch (e) {
     return err(e instanceof Error ? e.message : 'Failed to delete recipe');
   }
@@ -724,7 +754,11 @@ export async function deleteRecipe(
 const updateIngredientActionSchema = z.object({
   id: z.string().uuid('Invalid ingredient UUID'),
   name: z.string().trim().min(1, 'Ingredient name is required').optional(),
-  unit: z.string().trim().min(1, 'Unit is required').optional(),
+  unit: z
+    .enum(['g', 'ml', 'pcs'], {
+      message: 'Unit must be normalized to g, ml, or pcs',
+    })
+    .optional(),
   pack_size: z.coerce.number().positive('Pack size must be greater than 0').optional(),
   pack_cost: z.coerce.number().min(0, 'Pack cost must be >= 0').optional(),
   calories_per_unit: z.coerce.number().min(0, 'Calories must be >= 0').optional(),
@@ -750,31 +784,49 @@ export async function updateIngredient(
     stock_quantity?: number;
   },
 ): Promise<ActionResult<Ingredient>> {
-  const parsed = updateIngredientActionSchema.safeParse({ id, ...data });
+  let normalizedUnit = data.unit;
+  let normalizedPackSize = data.pack_size;
+
+  if (data.unit !== undefined) {
+    try {
+      const normalized = toBaseUnit(data.pack_size ?? 1, data.unit);
+      normalizedUnit = normalized.unit;
+      if (data.pack_size !== undefined) {
+        normalizedPackSize = normalized.value;
+      }
+    } catch (unitErr) {
+      return err(
+        unitErr instanceof Error ? unitErr.message : `Unsupported unit "${data.unit}"`
+      );
+    }
+  }
+
+  const parsed = updateIngredientActionSchema.safeParse({
+    id,
+    ...data,
+    ...(normalizedUnit !== undefined ? { unit: normalizedUnit } : {}),
+    ...(normalizedPackSize !== undefined ? { pack_size: normalizedPackSize } : {}),
+  });
   if (!parsed.success) return zodErr(parsed.error);
 
   const { id: ingId, ...updateFields } = parsed.data;
 
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { supabase, user, error: authErr } = await requireAuth();
+    if (!user) return err(authErr);
 
-    let query = supabase
+    const { data: updated, error: updateErr } = await supabase
       .from('ingredients')
       .update(updateFields)
-      .eq('id', ingId);
-
-    if (user) {
-      query = query.or(`user_id.eq.${user.id},user_id.is.null`);
-    } else {
-      query = query.is('user_id', null);
-    }
-
-    const { data: updated, error: updateErr } = await query
+      .eq('id', ingId)
+      .eq('user_id', user.id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateErr) return err(updateErr.message);
+    if (!updated) {
+      return err('Ingredient not found, or starter templates cannot be edited directly.');
+    }
 
     revalidatePath('/library');
     revalidatePath('/');
@@ -796,27 +848,26 @@ export async function deleteIngredient(
   if (!parsed.success) return zodErr(parsed.error);
 
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { supabase, user, error: authErr } = await requireAuth();
+    if (!user) return err(authErr);
 
-    let query = supabase
+    const { data: deleted, error: delErr } = await supabase
       .from('ingredients')
       .delete()
-      .eq('id', parsed.data);
+      .eq('id', parsed.data)
+      .eq('user_id', user.id)
+      .select('id')
+      .maybeSingle();
 
-    if (user) {
-      query = query.or(`user_id.eq.${user.id},user_id.is.null`);
-    } else {
-      query = query.is('user_id', null);
-    }
-
-    const { error: delErr } = await query;
     if (delErr) return err(delErr.message);
+    if (!deleted) {
+      return err('Ingredient not found, or starter templates cannot be deleted.');
+    }
 
     revalidatePath('/library');
     revalidatePath('/');
     revalidatePath('/insights');
-    return ok({ id: parsed.data });
+    return ok({ id: deleted.id as string });
   } catch (e) {
     return err(e instanceof Error ? e.message : 'Failed to delete ingredient');
   }
@@ -846,8 +897,10 @@ export async function createIngredient(
     const normalized = toBaseUnit(input.pack_size, input.unit);
     canonicalUnit = normalized.unit;
     canonicalPackSize = normalized.value;
-  } catch {
-    // leave as-is
+  } catch (unitErr) {
+    return err(
+      unitErr instanceof Error ? unitErr.message : `Unsupported unit "${input.unit}"`
+    );
   }
 
   const parsed = createIngredientSchema.safeParse({
@@ -865,14 +918,14 @@ export async function createIngredient(
   if (!parsed.success) return zodErr(parsed.error);
 
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const userId = user?.id ?? null;
+    const { supabase, user, error: authErr } = await requireAuth();
+    if (!user) return err(authErr);
 
     const { data: created, error: createErr } = await supabase
       .from('ingredients')
       .insert({
-        user_id: userId,
+        user_id: user.id,
+        is_public: false,
         name: parsed.data.name,
         unit: parsed.data.unit,
         pack_size: parsed.data.pack_size,
@@ -907,33 +960,32 @@ export type InsightsData = InsightsAnalytics;
 export async function getInsightsData(): Promise<ActionResult<InsightsAnalytics>> {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    let logsQuery = supabase
+    if (!user) {
+      return ok(computeInsightsAnalytics([], [], []));
+    }
+
+    const logsQuery = supabase
       .from('consumption_logs')
       .select('*')
+      .eq('user_id', user.id)
       .order('log_date', { ascending: true });
 
-    let ingredientsQuery = supabase
+    const ingredientsQuery = supabase
       .from('ingredients')
       .select('*')
+      .or(`user_id.eq.${user.id},and(user_id.is.null,is_public.eq.true)`)
       .order('name', { ascending: true });
 
-    let dayPlansQuery = supabase
+    const dayPlansQuery = supabase
       .from('day_plans')
       .select(DAY_PLAN_SELECT)
+      .eq('user_id', user.id)
       .order('day_of_week', { ascending: true })
       .order('sort_order', { ascending: true });
-
-    if (user) {
-      logsQuery = logsQuery.or(`user_id.eq.${user.id},user_id.is.null`);
-      ingredientsQuery = ingredientsQuery.or(`user_id.eq.${user.id},user_id.is.null`);
-      dayPlansQuery = dayPlansQuery.or(`user_id.eq.${user.id},user_id.is.null`);
-    } else {
-      logsQuery = logsQuery.is('user_id', null);
-      ingredientsQuery = ingredientsQuery.is('user_id', null);
-      dayPlansQuery = dayPlansQuery.is('user_id', null);
-    }
 
     const [logsRes, ingredientsRes, dayPlansRes] = await Promise.all([
       logsQuery,

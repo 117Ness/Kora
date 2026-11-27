@@ -25,19 +25,20 @@ function zodErr(e: z.ZodError): ProfileActionResult<never> {
 const GUEST_PROFILE: UserProfile = {
   id: 'guest',
   display_name: 'Guest Chef',
-  daily_calorie_target: 2200,
-  protein_target_g: 100,
-  carbs_target_g: 250,
-  fats_target_g: 70,
+  daily_calorie_target: 2800,
+  protein_target_g: 120,
+  carbs_target_g: 350,
+  fats_target_g: 85,
   micro_goals: ['High Fiber', 'Iron Rich'],
   cookware: ['Induction Cooktop', 'Non-Stick Pan', 'Pressure Cooker'],
   dietary_preferences: null,
-  updated_at: new Date().toISOString(),
+  updated_at: '1970-01-01T00:00:00.000Z',
 };
 
 /**
- * Retrieve user profile for authenticated user, auto-creating a default profile
- * on first login, or returning a sensible guest profile fallback when unauthenticated.
+ * Retrieve user profile for the authenticated user, falling back safely to
+ * upsert if a legacy user lacks a row (new signups are auto-provisioned via DB trigger),
+ * or returning sensible flat-living guest defaults when unauthenticated.
  */
 export async function getUserProfile(): Promise<ProfileActionResult<UserProfile>> {
   try {
@@ -65,7 +66,8 @@ export async function getUserProfile(): Promise<ProfileActionResult<UserProfile>
       return ok(profile as UserProfile);
     }
 
-    // Auto-create initial profile on first load
+    // Legacy fallback for users created before the handle_new_user() trigger.
+    // Uses upsert with ignoreDuplicates to avoid concurrent SSR insert races.
     const initialName =
       (user.user_metadata?.full_name as string | undefined) ||
       (user.user_metadata?.name as string | undefined) ||
@@ -75,27 +77,34 @@ export async function getUserProfile(): Promise<ProfileActionResult<UserProfile>
     const defaultProfile = {
       id: user.id,
       display_name: initialName,
-      daily_calorie_target: 2200,
-      protein_target_g: 100,
-      carbs_target_g: 250,
-      fats_target_g: 70,
-      micro_goals: ['High Fiber'],
+      daily_calorie_target: 2800,
+      protein_target_g: 120,
+      carbs_target_g: 350,
+      fats_target_g: 85,
+      micro_goals: ['High Fiber', 'Iron Rich'],
       cookware: ['Induction Cooktop', 'Non-Stick Pan', 'Pressure Cooker'],
       dietary_preferences: null,
-      updated_at: new Date().toISOString(),
     };
 
-    const { data: inserted, error: insertError } = await supabase
+    const { error: upsertError } = await supabase
       .from('user_profiles')
-      .insert(defaultProfile)
-      .select()
-      .single();
+      .upsert(defaultProfile, { onConflict: 'id', ignoreDuplicates: true });
 
-    if (insertError) {
-      return err(insertError.message);
+    if (upsertError) {
+      return err(upsertError.message);
     }
 
-    return ok(inserted as UserProfile);
+    const { data: resolvedProfile, error: refetchError } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (refetchError) {
+      return err(refetchError.message);
+    }
+
+    return ok(resolvedProfile as UserProfile);
   } catch (e) {
     return err(e instanceof Error ? e.message : 'Failed to retrieve profile');
   }
@@ -120,18 +129,19 @@ export async function updateUserProfile(
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return err('You must be signed in to update your profile');
+      return err('Please sign in to save your profile & kitchen targets.');
     }
-
-    const updatePayload = {
-      ...parsed.data,
-      updated_at: new Date().toISOString(),
-    };
 
     const { data: updated, error: updateError } = await supabase
       .from('user_profiles')
-      .update(updatePayload)
-      .eq('id', user.id)
+      .upsert(
+        {
+          id: user.id,
+          ...parsed.data,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' },
+      )
       .select()
       .single();
 
